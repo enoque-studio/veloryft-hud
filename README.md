@@ -6,8 +6,9 @@ compartilhado, e **duas camadas de apresentação**:
 1. **`overlay` — nativo Direct2D + layered window** (recomendado). Faixa pequena
    no rodapé, click-through real (clique vai pro jogo), barras lisas sem o judder
    do WebView2.
-2. **app Tauri/WebView2** — reaproveita a UI Solid. Candidata para a UI rica (8
-   painéis) na Fase 2.
+2. **app Tauri/WebView2** — reaproveita a UI Solid; serve para janelas **fora do
+   jogo** (configuração, login/licença). **Não** é o caminho da UI rica in-game —
+   ver Fase 2.
 
 Comparado ao stack original (Electron + Python/SSE):
 
@@ -77,7 +78,9 @@ sem o jogo, envie um datagrama de ≥311 bytes para a porta 20066.
 - [x] **Fase 1** — núcleo UDP/parse + duas camadas: app Tauri e **overlay nativo
       Direct2D** (barra de RPM, marcha, velocidade, pedais; suavização em Rust).
 - [ ] **Fase 2** — `payload.rs` completo (paridade com `payload.py`) + 8 painéis
-      ricos via WebView2 em DirectComposition visual hosting (barras seguem nativas).
+      ricos **em Direct2D nativo** (mesma pipeline do overlay: DIB premultiplicado +
+      `UpdateLayeredWindow`). Foco em performance sem perder o design; WebView2 fica
+      fora do caminho de render in-game.
 - [ ] **Fase 3** — atalhos globais completos, multi-monitor, modo edição,
       gravação de sessão, build portable.
 
