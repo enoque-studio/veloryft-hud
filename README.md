@@ -42,16 +42,18 @@ src-tauri/src/forza/         (núcleo compartilhado)
   udp.rs      thread: recv_from → parse → snapshot (callback opcional)
   packet.rs   detecção Sled/Dash/FH6 + leitura por offset (porta de packet.py)
   payload.rs  telemetria derivada (subconjunto da Fase 1)
+  display.rs  suavização, redline learning, visibilidade — fonte única (overlay + Tauri)
   state.rs    snapshot lock-free (arc-swap)
         │
         ├─► src/render.rs  (bin `overlay`)  janela WS_EX_LAYERED|WS_EX_TRANSPARENT +
         │                  Direct2D em DIB + UpdateLayeredWindow (click-through);
-        │                  lê o snapshot a cada frame, suaviza em Rust (TAU=0.06)
+        │                  dirty-skip + sleep adaptativo (menos carga na GPU)
         │
-        └─► src/lib.rs (app Tauri)  emite evento → src/App.tsx (UI Solid)
+        └─► src/lib.rs (app Tauri)  thread display → evento `display` → src/App.tsx
 ```
 
-Ambas as janelas: transparente, sempre no topo, sem barra de tarefas, click-through.
+Ambas as camadas de HUD leem o mesmo `DisplaySmoother` em Rust — o front só aplica
+valores já suavizados, sem duplicar lógica.
 
 ## Rodar
 

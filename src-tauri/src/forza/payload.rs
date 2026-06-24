@@ -55,6 +55,9 @@ pub struct Telemetry {
     /// Temperatura dos pneus [FL, FR, RL, RR] (dash-only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tires: Option<[f32; 4]>,
+    /// Posição mundial [x, y, z] em metros (dash-only). `y` = elevação.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pos: Option<[f32; 3]>,
 
     /// Contador monotônico de pacotes — dedupe/diagnóstico no front.
     pub _pkt: u64,
@@ -100,6 +103,7 @@ pub fn build(p: &Packet) -> Telemetry {
         t.steer = Some(p.steer() as f32 / 1.27);
         t.fuel = Some(p.fuel() * 100.0);
         t.tires = Some(p.tire_temps());
+        t.pos = Some(p.pos());
         let power_w = p.power();
         if power_w.is_finite() && power_w >= 0.0 {
             t.power_hp = Some(power_w / catalog::WATTS_PER_CV);

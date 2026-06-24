@@ -11,14 +11,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::DirectWrite::*;
-use windows::Win32::Graphics::Dwm::DwmFlush;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -27,27 +27,21 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows_numerics::{Matrix3x2, Vector2};
 
-use crate::forza::payload::{self, Telemetry};
+use crate::forza::display::{self, DisplayFrame, DisplaySmoother, PanelKind};
+use crate::forza::elevation::ElevationProfile;
+use crate::forza::tires::temp_color;
 use crate::forza::state::Shared;
 use crate::forza::udp;
-use crate::forza::visibility;
 
-const TAU_BAR: f32 = 0.032;
-const TAU_TEXT: f32 = 0.11;
-const TAU_FADE: f32 = 0.07;
-const SHIFT_AT: f32 = 0.92;
-const LEARN_MIN_THROTTLE: f32 = 90.0;
-const LEARN_MIN_OVER_IDLE: f32 = 2200.0;
-const LEARN_MIN_REPORTED_FRAC: f32 = 0.45;
-const LEARN_SUSPICIOUS_REPORTED_FRAC: f32 = 0.88;
-const STALE_S: f32 = 1.5;
 const UDP_PORT: u16 = 20066;
 const HK_QUIT: i32 = 1;
 const HK_EDIT: i32 = 2;
-const GRID: i32 = 40; // malha / passo de snap
-const RESIZE_MARGIN: i32 = 8; // borda sensível para redimensionar (px)
-const MIN_SZ: i32 = 80; // tamanho mínimo do card
-const MAGNET: i32 = 12; // alcance do "imã" suave até a linha da malha (px)
+const GRID: i32 = 40;
+const RESIZE_MARGIN: i32 = 8;
+const MIN_SZ: i32 = 80;
+const MAGNET: i32 = 12;
+const FRAME_MIN_MS: u64 = 16;
+const IDLE_SLEEP_MS: u64 = 50;
 
 static EDIT: AtomicBool = AtomicBool::new(false);
 
@@ -130,11 +124,14 @@ const CL_SPEED_Y: f32 = 124.0;
 const CL_BRAKE_Y: f32 = 156.0;
 const CL_ACCEL_Y: f32 = 188.0;
 // --- Pneus ---
-const TR_W: i32 = 210;
-const TR_H: i32 = 210;
+const TR_W: i32 = 256;
+const TR_H: i32 = 272;
 // --- G-force ---
 const GF_W: i32 = 200;
 const GF_H: i32 = 250;
+// --- Elevação ---
+const EL_W: i32 = 300;
+const EL_H: i32 = 200;
 
 // --- Barra de cores (modo edição) ---
 const SWATCHES: [f32; 8] = [4.0, 30.0, 50.0, 140.0, 188.0, 218.0, 280.0, 320.0];
@@ -160,6 +157,8 @@ const C_TRACK_EDGE: D2D1_COLOR_F = color(1.0, 1.0, 1.0, 0.05);
 const C_WHITE: D2D1_COLOR_F = color(0.98, 0.98, 0.99, 1.0);
 const C_GRAY: D2D1_COLOR_F = color(0.620, 0.667, 0.714, 0.92);
 const C_EDIT: D2D1_COLOR_F = color(0.40, 0.80, 1.0, 0.9);
+const C_ELEV_LINE: D2D1_COLOR_F = color(0.224, 0.780, 1.0, 1.0);
+const C_ELEV_MARKER: D2D1_COLOR_F = color(1.0, 0.310, 0.541, 1.0);
 
 // Glassmorphism (vidro fosco simulado): fundo translúcido em gradiente +
 // borda clara + brilho interno. O jogo aparece tingido através do card.
@@ -167,14 +166,6 @@ const GLASS_TOP: D2D1_COLOR_F = color(0.172, 0.192, 0.235, 0.55); // #2c313c a 0
 const GLASS_BOT: D2D1_COLOR_F = color(0.063, 0.071, 0.094, 0.34); // #101218 a 0.34
 const GLASS_BORDER: D2D1_COLOR_F = color(1.0, 1.0, 1.0, 0.14);
 const GLASS_HI: D2D1_COLOR_F = color(1.0, 1.0, 1.0, 0.07);
-const GLASS_RADIUS: f32 = 18.0;
-
-fn exp_smooth(cur: f32, target: f32, dt: f32, tau: f32) -> f32 {
-    if tau <= 0.0 || dt <= 0.0 {
-        return target;
-    }
-    cur + (target - cur) * (1.0 - (-dt / tau).exp())
-}
 
 fn rectf(left: f32, top: f32, right: f32, bottom: f32) -> D2D_RECT_F {
     D2D_RECT_F { left, top, right, bottom }
@@ -182,9 +173,21 @@ fn rectf(left: f32, top: f32, right: f32, bottom: f32) -> D2D_RECT_F {
 fn rounded(r: D2D_RECT_F, radius: f32) -> D2D1_ROUNDED_RECT {
     D2D1_ROUNDED_RECT { rect: r, radiusX: radius, radiusY: radius }
 }
-fn slip_color(s: f32) -> D2D1_COLOR_F {
-    let f = (s / 1.3).clamp(0.0, 1.0);
-    color(0.2 + 0.8 * f, 0.85 - 0.65 * f, 0.25 * (1.0 - f), 0.18 + 0.55 * f)
+
+/// Espaço de desenho que preenche a janela (sem letterbox) com escala uniforme.
+fn panel_canvas(sw: f32, sh: f32, base_w: f32, base_h: f32) -> (f32, f32, f32) {
+    let aspect = sw / sh;
+    let base_aspect = base_w / base_h;
+    let (w, h) = if aspect >= base_aspect {
+        (base_h * aspect, base_h)
+    } else {
+        (base_w, base_w / aspect)
+    };
+    (w, h, sw / w)
+}
+
+fn glass_radius(w: f32, h: f32) -> f32 {
+    (w.min(h) * 0.078).clamp(8.0, 28.0)
 }
 /// Imã suave: encaixa na linha da malha só quando está dentro de `MAGNET`;
 /// fora disso, posição livre (movimento natural, não quantizado).
@@ -225,13 +228,12 @@ fn toolbar_click(x: i32, y: i32) {
     }
 }
 
-// ===================== telemetria suavizada =====================
-
 #[derive(Clone, Copy)]
 enum Kind {
     Cluster,
     Tires,
     GForce,
+    Elevation,
 }
 
 impl Kind {
@@ -240,6 +242,7 @@ impl Kind {
             Kind::Cluster => (CL_W, CL_H),
             Kind::Tires => (TR_W, TR_H),
             Kind::GForce => (GF_W, GF_H),
+            Kind::Elevation => (EL_W, EL_H),
         }
     }
     fn default_pos(self, sw: i32, sh: i32) -> (i32, i32) {
@@ -247,6 +250,7 @@ impl Kind {
             Kind::Cluster => ((sw - CL_W) / 2, sh - CL_H - 30),
             Kind::Tires => (40, sh - TR_H - 30),
             Kind::GForce => (sw - GF_W - 40, sh - GF_H - 30),
+            Kind::Elevation => (sw - EL_W - 40, 40),
         }
     }
     fn key(self) -> &'static str {
@@ -254,242 +258,15 @@ impl Kind {
             Kind::Cluster => "cluster",
             Kind::Tires => "tires",
             Kind::GForce => "gforce",
+            Kind::Elevation => "elevation",
         }
     }
-}
-
-struct FrameData {
-    rpm_frac: f32,
-    near: bool,
-    gear: Option<u8>,
-    speed: f32,
-    accel: f32,
-    brake: f32,
-    car_name: String,
-    power_cv: f32,
-    show_power: bool,
-    slip: [f32; 4],
-    tires: Option<[f32; 4]>,
-    lat: f32,
-    long: f32,
-    fresh: bool,
-    alpha: f32,
-    accent: D2D1_COLOR_F, // cor do destaque (tema)
-    gear_accent: bool,    // shift colore a marcha? (senão, o card)
-}
-
-struct Smoother {
-    d_rpm: f32,
-    d_accel: f32,
-    d_brake: f32,
-    d_speed: f32,
-    d_lat: f32,
-    d_long: f32,
-    d_slip: [f32; 4],
-    d_power: f32,
-    last_pkt: u64,
-    last_change: Instant,
-    last_frame: Instant,
-    /// Último max_rpm > 0 — evita piscar quando o jogo zera o campo na troca de carro.
-    sticky_max_rpm: f32,
-    /// Pico observado sob aceleração forte; usado para aprender redline real de carros com max_rpm errado.
-    observed_peak_rpm: f32,
-    learned_max_rpm: f32,
-    last_raw_rpm: f32,
-    last_gear: Option<u8>,
-    /// Assinatura do carro (max_rpm + idle_rpm + car_group) para detectar troca.
-    car_sig: u64,
-    d_visible: f32,
-}
-
-fn car_signature(snap: &Telemetry) -> u64 {
-    let max_b = if snap.max_rpm > 100.0 { snap.max_rpm.to_bits() as u64 } else { 0 };
-    let idle_b = if snap.idle_rpm > 0.0 { snap.idle_rpm.to_bits() as u64 } else { 0 };
-    let group = snap.car_group.unwrap_or(0) as u64;
-    let ord = if snap.car_ordinal != 0 { snap.car_ordinal as u64 } else { 0 };
-    max_b ^ (idle_b << 1) ^ (group << 2) ^ (ord << 3)
-}
-
-impl Smoother {
-    fn new() -> Self {
-        let now = Instant::now();
-        Self {
-            d_rpm: 0.0,
-            d_accel: 0.0,
-            d_brake: 0.0,
-            d_speed: 0.0,
-            d_lat: 0.0,
-            d_long: 0.0,
-            d_slip: [0.0; 4],
-            d_power: 0.0,
-            last_pkt: 0,
-            last_change: now,
-            last_frame: now,
-            sticky_max_rpm: 0.0,
-            observed_peak_rpm: 0.0,
-            learned_max_rpm: 0.0,
-            last_raw_rpm: 0.0,
-            last_gear: None,
-            car_sig: 0,
-            d_visible: 0.0,
-        }
-    }
-
-    fn reset_to(&mut self, t_rpm: f32, accel: f32, brake: f32, speed: f32, lat: f32, long: f32, slip: [f32; 4]) {
-        self.d_rpm = t_rpm;
-        self.d_accel = accel;
-        self.d_brake = brake;
-        self.d_speed = speed;
-        self.d_lat = lat;
-        self.d_long = long;
-        self.d_slip = slip;
-    }
-
-    fn effective_max_rpm(&self) -> f32 {
-        if self.learned_max_rpm > 100.0 {
-            self.learned_max_rpm
-        } else {
-            self.sticky_max_rpm
-        }
-    }
-
-    fn reset_car_learning(&mut self, rpm: f32, gear: Option<u8>) {
-        self.observed_peak_rpm = rpm.max(0.0);
-        self.learned_max_rpm = 0.0;
-        self.last_raw_rpm = rpm.max(0.0);
-        self.last_gear = gear;
-    }
-
-    fn commit_observed_peak(&mut self, idle_rpm: f32) {
-        let peak = self.observed_peak_rpm;
-        let reported = self.sticky_max_rpm;
-        if peak <= idle_rpm + LEARN_MIN_OVER_IDLE || reported <= 100.0 {
-            return;
-        }
-        let frac = peak / reported;
-        let looks_like_low_rev_car = frac >= LEARN_MIN_REPORTED_FRAC && frac < LEARN_SUSPICIOUS_REPORTED_FRAC;
-        if looks_like_low_rev_car {
-            // Queremos que o vermelho acenda no pico observado de upshift,
-            // não 8% antes dele. Como o alerta usa SHIFT_AT, convertemos o
-            // pico em max efetivo: peak == learned_max * SHIFT_AT.
-            self.learned_max_rpm = self.learned_max_rpm.max(peak / SHIFT_AT);
-        }
-    }
-
-    fn learn_effective_redline(&mut self, snap: &Telemetry, fresh: bool) {
-        if !fresh {
-            return;
-        }
-        let gear = snap.gear;
-        let accel = snap.accel.unwrap_or(0.0);
-        let rpm = snap.rpm.max(0.0);
-        let upshift = matches!((self.last_gear, gear), (Some(prev), Some(next)) if next > prev && prev > 0);
-
-        if upshift && accel >= LEARN_MIN_THROTTLE {
-            self.commit_observed_peak(snap.idle_rpm);
-            self.observed_peak_rpm = rpm;
-        }
-        if accel >= LEARN_MIN_THROTTLE && gear != Some(0) {
-            self.observed_peak_rpm = self.observed_peak_rpm.max(rpm);
-        }
-        self.last_raw_rpm = rpm;
-        self.last_gear = gear;
-    }
-
-    fn tick(&mut self, snap: &Telemetry, edit: bool) -> FrameData {
-        let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f32().min(0.1);
-        self.last_frame = now;
-        if snap._pkt != self.last_pkt {
-            self.last_pkt = snap._pkt;
-            self.last_change = now;
-        }
-        let age_s = (now - self.last_change).as_secs_f32();
-        let fresh = age_s < STALE_S;
-        let driving = edit || visibility::is_driving(snap, age_s);
-        let target_vis = if driving { 1.0 } else { 0.0 };
-        self.d_visible = exp_smooth(self.d_visible, target_vis, dt, TAU_FADE);
-
-        if snap.max_rpm > 100.0 {
-            self.sticky_max_rpm = snap.max_rpm;
-        }
-        let sig = car_signature(snap);
-        if sig != 0 && self.car_sig != 0 && sig != self.car_sig {
-            self.reset_car_learning(snap.rpm, snap.gear);
-            let max = self.effective_max_rpm();
-            let t_rpm = if fresh && max > 0.0 {
-                (snap.rpm / max).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let accel = if fresh { snap.accel.unwrap_or(0.0) / 100.0 } else { 0.0 };
-            let brake = if fresh { snap.brake.unwrap_or(0.0) / 100.0 } else { 0.0 };
-            let speed = if fresh { snap.speed.unwrap_or(0.0) } else { 0.0 };
-            let lat = if fresh { snap.lat_g } else { 0.0 };
-            let long = if fresh { snap.long_g } else { 0.0 };
-            let slip = if fresh { snap.slip } else { [0.0; 4] };
-            self.reset_to(t_rpm, accel, brake, speed, lat, long, slip);
-            self.d_power = if fresh { snap.power_hp.unwrap_or(0.0) } else { 0.0 };
-        }
-        if sig != 0 {
-            if self.car_sig == 0 {
-                self.reset_car_learning(snap.rpm, snap.gear);
-            }
-            self.car_sig = sig;
-        }
-        self.learn_effective_redline(snap, fresh);
-
-        let max = self.effective_max_rpm();
-        let t_rpm = if fresh && max > 0.0 {
-            (snap.rpm / max).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        self.d_rpm = exp_smooth(self.d_rpm, t_rpm, dt, TAU_BAR);
-        self.d_accel = exp_smooth(
-            self.d_accel,
-            if fresh { snap.accel.unwrap_or(0.0) / 100.0 } else { 0.0 },
-            dt,
-            TAU_BAR,
-        );
-        self.d_brake = exp_smooth(
-            self.d_brake,
-            if fresh { snap.brake.unwrap_or(0.0) / 100.0 } else { 0.0 },
-            dt,
-            TAU_BAR,
-        );
-        self.d_speed = exp_smooth(
-            self.d_speed,
-            if fresh { snap.speed.unwrap_or(0.0) } else { 0.0 },
-            dt,
-            TAU_TEXT,
-        );
-        self.d_lat = exp_smooth(self.d_lat, if fresh { snap.lat_g } else { 0.0 }, dt, TAU_BAR);
-        self.d_long = exp_smooth(self.d_long, if fresh { snap.long_g } else { 0.0 }, dt, TAU_BAR);
-        for i in 0..4 {
-            self.d_slip[i] = exp_smooth(self.d_slip[i], if fresh { snap.slip[i] } else { 0.0 }, dt, TAU_BAR);
-        }
-        let power_target = snap.power_hp.unwrap_or(0.0);
-        self.d_power = exp_smooth(self.d_power, if fresh { power_target } else { 0.0 }, dt, TAU_TEXT);
-
-        FrameData {
-            rpm_frac: self.d_rpm,
-            near: self.d_rpm >= SHIFT_AT,
-            gear: snap.gear,
-            speed: self.d_speed,
-            accel: self.d_accel,
-            brake: self.d_brake,
-            car_name: payload::car_label(snap.car_ordinal, snap.car_name.as_deref()),
-            power_cv: self.d_power,
-            show_power: snap.power_hp.is_some(),
-            slip: self.d_slip,
-            tires: if fresh { snap.tires } else { None },
-            lat: self.d_lat,
-            long: self.d_long,
-            fresh,
-            alpha: self.d_visible,
-            accent: hue_color(THEME.get().hue),
-            gear_accent: THEME.get().gear_target,
+    fn panel_kind(self) -> PanelKind {
+        match self {
+            Kind::Cluster => PanelKind::Cluster,
+            Kind::Tires => PanelKind::Tires,
+            Kind::GForce => PanelKind::GForce,
+            Kind::Elevation => PanelKind::Elevation,
         }
     }
 }
@@ -500,6 +277,8 @@ impl Smoother {
 struct Fonts {
     gear: IDWriteTextFormat,
     speed: IDWriteTextFormat,
+    tire: IDWriteTextFormat,
+    micro: IDWriteTextFormat,
     small: IDWriteTextFormat,
     small_left: IDWriteTextFormat,
     small_right: IDWriteTextFormat,
@@ -608,6 +387,18 @@ fn make_fonts() -> Result<Fonts> {
                 32.0,
                 DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_TEXT_ALIGNMENT_LEADING,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+            )?,
+            tire: make(
+                26.0,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_TEXT_ALIGNMENT_CENTER,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+            )?,
+            micro: make(
+                11.0,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_TEXT_ALIGNMENT_CENTER,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             small: make(
@@ -771,13 +562,15 @@ struct Panel {
     memdc: HDC,
     bitmap: HBITMAP,
     pos: POINT,
-    size: SIZE,   // tamanho atual (redimensionável)
-    design: SIZE, // tamanho-base do layout (conteúdo é escalado p/ `size`)
+    size: SIZE,
+    design: SIZE,
+    factory: ID2D1Factory,
     dcrt: ID2D1DCRenderTarget,
     rt: ID2D1RenderTarget,
     b: Brushes,
     f: Fonts,
     shown: Cell<bool>,
+    paint_key: Cell<u64>,
 }
 
 impl Panel {
@@ -816,11 +609,13 @@ impl Panel {
             pos: POINT { x: pos.0, y: pos.1 },
             size: SIZE { cx: w, cy: h },
             design: SIZE { cx: dw, cy: dh },
+            factory: factory.clone(),
             dcrt,
             rt,
             b,
             f: fonts.clone(),
             shown: Cell::new(false),
+            paint_key: Cell::new(0),
         })
     }
 
@@ -860,9 +655,9 @@ impl Panel {
 
     /// Superfície de vidro fosco do card (gradiente + borda + brilho interno).
     /// `shift` = borda vermelha (troca de marcha); `edit` = borda ciano (seleção).
-    fn draw_card(&self, dw: f32, dh: f32, edit: bool, shift: bool, accent: D2D1_COLOR_F) {
-        let outer = rounded(rectf(0.75, 0.75, dw - 0.75, dh - 0.75), GLASS_RADIUS);
-        let inner = rounded(rectf(1.75, 1.75, dw - 1.75, dh - 1.75), GLASS_RADIUS - 1.0);
+    fn draw_card(&self, w: f32, h: f32, radius: f32, edit: bool, shift: bool, accent: D2D1_COLOR_F) {
+        let outer = rounded(rectf(0.75, 0.75, w - 0.75, h - 0.75), radius);
+        let inner = rounded(rectf(1.75, 1.75, w - 1.75, h - 1.75), (radius - 1.0).max(4.0));
         unsafe {
             if shift {
                 // Card inteiro na cor do tema no momento do shift.
@@ -886,16 +681,19 @@ impl Panel {
         }
     }
 
-    fn pedal_row_right(&self, label: &str, frac: f32, fill: &ID2D1SolidColorBrush, y: f32) {
-        let label_w = 64.0f32;
-        let gap = 8.0f32;
-        let bar_x = CL_RIGHT_X + label_w + gap;
-        let bar_w = CL_RIGHT_R - bar_x;
-        let th = CL_PEDAL_H;
+    fn pedal_row_right(&self, label: &str, frac: f32, fill: &ID2D1SolidColorBrush, y: f32, w: f32) {
+        let sx = w / CL_W as f32;
+        let label_w = 64.0 * sx;
+        let gap = 8.0 * sx;
+        let right_x = CL_RIGHT_X / CL_W as f32 * w;
+        let right_r = CL_RIGHT_R / CL_W as f32 * w;
+        let bar_x = right_x + label_w + gap;
+        let bar_w = right_r - bar_x;
+        let th = CL_PEDAL_H * sx;
         self.text(
             label,
             &self.f.small_left,
-            rectf(CL_RIGHT_X, y - 9.0, CL_RIGHT_X + label_w, y + 9.0),
+            rectf(right_x, y - 9.0 * sx, right_x + label_w, y + 9.0 * sx),
             &self.b.gray,
         );
         let track = rounded(rectf(bar_x, y - th / 2.0, bar_x + bar_w, y + th / 2.0), th / 2.0);
@@ -912,40 +710,43 @@ impl Panel {
         }
     }
 
-    fn draw_cluster(&self, f: &FrameData) {
+    fn draw_cluster(&self, f: &DisplayFrame, accent: D2D1_COLOR_F, gear_accent: bool, w: f32, h: f32) {
+        let px = |x: f32| x / CL_W as f32 * w;
+        let py = |y: f32| y / CL_H as f32 * h;
         let gear = match f.gear {
             Some(0) => "R".to_string(),
             Some(g) => g.to_string(),
             None => "–".to_string(),
         };
-        // Marcha branca por padrão; cor do tema só se o destaque do shift for a marcha.
-        if f.near && f.gear_accent {
-            unsafe { self.b.scratch.SetColor(&f.accent) };
+        if f.near && gear_accent {
+            unsafe { self.b.scratch.SetColor(&accent) };
         }
-        let gb = if f.near && f.gear_accent { &self.b.scratch } else { &self.b.white };
+        let gb = if f.near && gear_accent { &self.b.scratch } else { &self.b.white };
         self.text(
             &gear,
             &self.f.gear,
             rectf(
-                CL_BAR_X,
-                CL_PAD + CL_GEAR_Y_SHIFT,
-                CL_BAR_X + CL_GEAR_W,
-                CL_H as f32 - CL_PAD + CL_GEAR_Y_SHIFT,
+                px(CL_BAR_X),
+                py(CL_PAD + CL_GEAR_Y_SHIFT),
+                px(CL_BAR_X + CL_GEAR_W),
+                h - py(CL_PAD) + py(CL_GEAR_Y_SHIFT),
             ),
             gb,
         );
 
+        let rpm_y = py(CL_RPM_Y);
+        let bar_h = py(CL_BAR_H);
         unsafe {
             self.rt.FillRoundedRectangle(
-                &rounded(rectf(CL_RIGHT_X, CL_RPM_Y, CL_RIGHT_R, CL_RPM_Y + CL_BAR_H), CL_BAR_H / 2.0),
+                &rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h), bar_h / 2.0),
                 &self.b.track,
             );
-            let rpm_track = rounded(rectf(CL_RIGHT_X, CL_RPM_Y, CL_RIGHT_R, CL_RPM_Y + CL_BAR_H), CL_BAR_H / 2.0);
+            let rpm_track = rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h), bar_h / 2.0);
             self.rt.DrawRoundedRectangle(&rpm_track, &self.b.track_edge, 0.75, None);
             if f.rpm_frac > 0.001 {
-                let rw = (CL_RIGHT_R - CL_RIGHT_X) * f.rpm_frac;
+                let rw = (px(CL_RIGHT_R) - px(CL_RIGHT_X)) * f.rpm_frac;
                 self.rt.FillRoundedRectangle(
-                    &rounded(rectf(CL_RIGHT_X, CL_RPM_Y, CL_RIGHT_X + rw, CL_RPM_Y + CL_BAR_H), CL_BAR_H / 2.0),
+                    &rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_X) + rw, rpm_y + bar_h), bar_h / 2.0),
                     &self.b.grad,
                 );
             }
@@ -954,7 +755,7 @@ impl Panel {
         self.text(
             &f.car_name,
             &self.f.small_left,
-            rectf(CL_RIGHT_X, CL_META_Y - 10.0, CL_RIGHT_R - 90.0, CL_META_Y + 24.0),
+            rectf(px(CL_RIGHT_X), py(CL_META_Y - 10.0), px(CL_RIGHT_R - 90.0), py(CL_META_Y + 24.0)),
             &self.b.gray,
         );
         if f.show_power {
@@ -962,7 +763,7 @@ impl Panel {
             self.text(
                 &power,
                 &self.f.small_right,
-                rectf(CL_RIGHT_R - 130.0, CL_META_Y - 10.0, CL_RIGHT_R, CL_META_Y + 10.0),
+                rectf(px(CL_RIGHT_R - 130.0), py(CL_META_Y - 10.0), px(CL_RIGHT_R), py(CL_META_Y + 10.0)),
                 &self.b.white,
             );
         }
@@ -971,43 +772,211 @@ impl Panel {
         self.text(
             &sp,
             &self.f.speed,
-            rectf(CL_RIGHT_X, CL_SPEED_Y - 16.0, CL_RIGHT_X + 120.0, CL_SPEED_Y + 16.0),
+            rectf(px(CL_RIGHT_X), py(CL_SPEED_Y - 16.0), px(CL_RIGHT_X + 120.0), py(CL_SPEED_Y + 16.0)),
             &self.b.white,
         );
         self.text(
             "km/h",
             &self.f.small_left,
-            rectf(CL_RIGHT_X + 122.0, CL_SPEED_Y - 8.0, CL_RIGHT_X + 170.0, CL_SPEED_Y + 12.0),
+            rectf(px(CL_RIGHT_X + 122.0), py(CL_SPEED_Y - 8.0), px(CL_RIGHT_X + 170.0), py(CL_SPEED_Y + 12.0)),
             &self.b.gray,
         );
 
-        self.pedal_row_right("BRAKE", f.brake, &self.b.brake, CL_BRAKE_Y);
-        self.pedal_row_right("THROTTLE", f.accel, &self.b.accel, CL_ACCEL_Y);
+        self.pedal_row_right("BRAKE", f.brake, &self.b.brake, py(CL_BRAKE_Y), w);
+        self.pedal_row_right("THROTTLE", f.accel, &self.b.accel, py(CL_ACCEL_Y), w);
     }
 
-    fn draw_tires(&self, f: &FrameData) {
-        self.text("TIRES", &self.f.small, rectf(0.0, 8.0, TR_W as f32, 30.0), &self.b.gray);
-        let cells = [(16.0, 40.0), (108.0, 40.0), (16.0, 118.0), (108.0, 118.0)];
-        let (cw, ch) = (86.0f32, 66.0f32);
-        for i in 0..4 {
-            let (x, y) = cells[i];
-            let cell = rounded(rectf(x, y, x + cw, y + ch), 8.0);
-            unsafe {
-                self.rt.FillRoundedRectangle(&cell, &self.b.track);
-                self.b.scratch.SetColor(&slip_color(f.slip[i]));
-                self.rt.FillRoundedRectangle(&cell, &self.b.scratch);
+    fn draw_tire_range(
+        &self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        cur: f32,
+        min_v: Option<f32>,
+        max_v: Option<f32>,
+        accent: D2D1_COLOR_F,
+    ) {
+        let lo = min_v.unwrap_or(cur);
+        let hi = max_v.unwrap_or(cur);
+        let pad = (hi - lo).max(8.0) * 0.15;
+        let t0 = (lo - pad).min(cur);
+        let t1 = (hi + pad).max(cur);
+        let span = (t1 - t0).max(1.0);
+        let norm = |t: f32| ((t - t0) / span).clamp(0.0, 1.0);
+        let cur_n = norm(cur);
+        let lo_n = norm(lo);
+        let hi_n = norm(hi);
+        let track = rounded(rectf(x, y, x + w, y + h), h / 2.0);
+        unsafe {
+            self.rt.FillRoundedRectangle(&track, &self.b.track);
+            if min_v.is_some() && max_v.is_some() && hi_n > lo_n + 0.02 {
+                let mut band = accent;
+                band.a = 0.28;
+                self.b.scratch.SetColor(&band);
+                self.rt.FillRoundedRectangle(
+                    &rounded(rectf(x + w * lo_n, y, x + w * hi_n, y + h), h / 2.0),
+                    &self.b.scratch,
+                );
+                self.b.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.35));
+                let tick_h = h * 1.8;
+                for n in [lo_n, hi_n] {
+                    let tx = x + w * n;
+                    self.rt.DrawLine(
+                        Vector2 { X: tx, Y: y + h / 2.0 - tick_h / 2.0 },
+                        Vector2 { X: tx, Y: y + h / 2.0 + tick_h / 2.0 },
+                        &self.b.scratch,
+                        1.0,
+                        None,
+                    );
+                }
             }
-            let label = match (f.tires, f.fresh) {
-                (Some(t), true) => format!("{:.0}", t[i]),
-                _ => "--".to_string(),
-            };
-            self.text(&label, &self.f.small, rectf(x, y, x + cw, y + ch), &self.b.white);
+            let mx = x + w * cur_n;
+            let mut dot = accent;
+            dot.a = 1.0;
+            self.b.scratch.SetColor(&dot);
+            self.rt.FillRoundedRectangle(
+                &rounded(rectf(mx - h * 0.55, y - h * 0.15, mx + h * 0.55, y + h + h * 0.15), h),
+                &self.b.scratch,
+            );
         }
     }
 
-    fn draw_gforce(&self, f: &FrameData) {
-        let (cxg, cyg, r) = (GF_W as f32 / 2.0, 120.0f32, 80.0f32);
-        self.text("G", &self.f.small, rectf(0.0, 8.0, GF_W as f32, 30.0), &self.b.gray);
+    fn draw_tires(&self, f: &DisplayFrame, w: f32, h: f32) {
+        let pad = (w * 0.05).max(8.0);
+        let head_h = (h * 0.09).max(20.0);
+        let gap = pad * 0.85;
+        let grid_top = head_h + pad * 0.55;
+        let grid_w = w - pad * 2.0;
+        let grid_h = h - grid_top - pad;
+        let cell_w = ((grid_w - gap) * 0.5).max(44.0);
+        let cell_h = ((grid_h - gap) * 0.5).max(44.0);
+        let grid_x = pad + (grid_w - (cell_w * 2.0 + gap)).max(0.0) * 0.5;
+        let cell_r = (cell_w.min(cell_h) * 0.11).clamp(8.0, 14.0);
+        let inner = (cell_w.min(cell_h) * 0.09).clamp(6.0, 10.0);
+
+        self.text(
+            "TIRES",
+            &self.f.small_left,
+            rectf(pad, pad * 0.35, pad + grid_w * 0.55, head_h),
+            &self.b.gray,
+        );
+        self.text(
+            "°C",
+            &self.f.small_right,
+            rectf(w - pad - 36.0, pad * 0.35, w - pad, head_h),
+            &self.b.gray,
+        );
+        unsafe {
+            self.rt.DrawLine(
+                Vector2 { X: pad, Y: head_h + 2.0 },
+                Vector2 { X: w - pad, Y: head_h + 2.0 },
+                &self.b.track_edge,
+                1.0,
+                None,
+            );
+        }
+
+        let corners = ["FL", "FR", "RL", "RR"];
+        let positions = [
+            (grid_x, grid_top),
+            (grid_x + cell_w + gap, grid_top),
+            (grid_x, grid_top + cell_h + gap),
+            (grid_x + cell_w + gap, grid_top + cell_h + gap),
+        ];
+
+        for i in 0..4 {
+            let (x, y) = positions[i];
+            let (cur, min_v, max_v) = match (f.tires, f.tire_min, f.tire_max, f.fresh) {
+                (Some(t), min, max, true) if t[i].is_finite() && t[i] > 0.0 => {
+                    let lo = min.and_then(|m| m[i].is_finite().then_some(m[i]));
+                    let hi = max.and_then(|m| m[i].is_finite().then_some(m[i]));
+                    (Some(t[i]), lo, hi)
+                }
+                _ => (None, None, None),
+            };
+
+            let outer = rounded(rectf(x, y, x + cell_w, y + cell_h), cell_r);
+            unsafe {
+                self.b.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.035));
+                self.rt.FillRoundedRectangle(&outer, &self.b.scratch);
+                self.rt.DrawRoundedRectangle(&outer, &self.b.track_edge, 0.75, None);
+            }
+
+            // Badge do canto
+            let badge_h = (cell_h * 0.16).clamp(14.0, 20.0);
+            let badge_w = (cell_w * 0.30).clamp(28.0, 44.0);
+            let badge = rounded(
+                rectf(x + inner, y + inner, x + inner + badge_w, y + inner + badge_h),
+                badge_h / 2.0,
+            );
+            unsafe {
+                self.rt.FillRoundedRectangle(&badge, &self.b.track);
+            }
+            self.text(
+                corners[i],
+                &self.f.micro,
+                rectf(x + inner, y + inner, x + inner + badge_w, y + inner + badge_h),
+                &self.b.gray,
+            );
+
+            // Temperatura central
+            let temp_top = y + cell_h * 0.30;
+            let temp_bot = y + cell_h * 0.62;
+            let bar_h = (cell_h * 0.07).clamp(4.0, 6.0);
+            let bar_y = y + cell_h * 0.68;
+            let bar_x = x + inner;
+            let bar_w = cell_w - inner * 2.0;
+            let foot_top = bar_y + bar_h + inner * 0.35;
+            let foot_bot = y + cell_h - inner * 0.45;
+
+            if let Some(temp) = cur {
+                let (r, g, b, a) = temp_color(temp);
+                let accent = color(r, g, b, a);
+                let temp_s = format!("{:.0}", temp);
+                unsafe { self.b.scratch.SetColor(&accent) };
+                self.text(
+                    &temp_s,
+                    &self.f.tire,
+                    rectf(x + inner, temp_top, x + cell_w - inner, temp_bot),
+                    &self.b.scratch,
+                );
+                self.draw_tire_range(bar_x, bar_y, bar_w, bar_h, temp, min_v, max_v, accent);
+
+                let min_s = min_v.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "–".to_string());
+                let max_s = max_v.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "–".to_string());
+                self.text(
+                    &min_s,
+                    &self.f.small_left,
+                    rectf(bar_x, foot_top, bar_x + bar_w * 0.48, foot_bot),
+                    &self.b.white,
+                );
+                self.text(
+                    &max_s,
+                    &self.f.small_right,
+                    rectf(bar_x + bar_w * 0.52, foot_top, bar_x + bar_w, foot_bot),
+                    &self.b.white,
+                );
+            } else {
+                self.text(
+                    "–",
+                    &self.f.tire,
+                    rectf(x + inner, temp_top, x + cell_w - inner, temp_bot),
+                    &self.b.gray,
+                );
+            }
+        }
+    }
+
+    fn draw_gforce(&self, f: &DisplayFrame, w: f32, h: f32) {
+        let head_h = h * 0.12;
+        let foot_h = h * 0.14;
+        let cxg = w * 0.5;
+        let cyg = head_h + (h - head_h - foot_h) * 0.5;
+        let r = w.min(h - head_h - foot_h) * 0.36;
+        let dot_r = (r * 0.09).clamp(5.0, 9.0);
+
+        self.text("G-FORCE", &self.f.small, rectf(0.0, head_h * 0.25, w, head_h), &self.b.gray);
         unsafe {
             let outer = D2D1_ELLIPSE { point: Vector2 { X: cxg, Y: cyg }, radiusX: r, radiusY: r };
             self.rt.DrawEllipse(&outer, &self.b.gray, 1.5, None);
@@ -1023,62 +992,254 @@ impl Panel {
                 dx *= r / mag;
                 dy *= r / mag;
             }
-            let dot = D2D1_ELLIPSE { point: Vector2 { X: cxg + dx, Y: cyg + dy }, radiusX: 7.0, radiusY: 7.0 };
+            let dot = D2D1_ELLIPSE {
+                point: Vector2 { X: cxg + dx, Y: cyg + dy },
+                radiusX: dot_r,
+                radiusY: dot_r,
+            };
             self.rt.FillEllipse(&dot, &self.b.white);
         }
         let txt = format!("{:.1}g  {:.1}g", f.lat, f.long);
-        self.text(&txt, &self.f.small, rectf(0.0, cyg + r + 6.0, GF_W as f32, cyg + r + 32.0), &self.b.gray);
+        self.text(
+            &txt,
+            &self.f.small,
+            rectf(w * 0.06, h - foot_h, w * 0.94, h - foot_h * 0.25),
+            &self.b.gray,
+        );
     }
 
-    fn draw(&self, f: &FrameData, edit: bool) -> Result<()> {
+    fn draw_elevation(&self, f: &DisplayFrame, elev: &ElevationProfile, w: f32, h: f32) {
+        let pad = (w * 0.033).max(6.0);
+        let head_h = (h * 0.13).max(22.0);
+        let foot_h = (h * 0.12).max(18.0);
+        let chart_top = head_h + h * 0.02;
+        let chart_bot = h - foot_h - h * 0.02;
+        let chart_w = w - pad * 2.0;
+        let chart_h = (chart_bot - chart_top).max(20.0);
+
+        self.text("ELEVATION", &self.f.small_left, rectf(pad, pad * 0.4, pad + w * 0.45, head_h), &self.b.gray);
+        let lap = if elev.loop_closed {
+            format!("{:.2} km", elev.loop_km)
+        } else if elev.lap_km > 0.0 {
+            format!("{:.2} km", elev.lap_km)
+        } else {
+            "–".to_string()
+        };
+        self.text(
+            &lap,
+            &self.f.small_right,
+            rectf(w - pad - w * 0.38, pad * 0.4, w - pad, head_h),
+            &self.b.white,
+        );
+
+        let d_max = if elev.loop_closed {
+            elev.loop_km * 1000.0
+        } else {
+            elev.pts.last().map(|p| p.d).unwrap_or(1.0)
+        }
+        .max(1.0);
+        let span = (elev.max - elev.min).max(1.0);
+
+        let x_at = |d: f32| pad + (d / d_max) * chart_w;
+        let y_at = |y: f32| chart_bot - ((y - elev.min) / span) * chart_h;
+
+        unsafe {
+            if elev.pts.len() >= 2 {
+                let geom = self.factory.CreatePathGeometry().expect("path geom");
+                let sink = geom.Open().expect("path sink");
+                let first = &elev.pts[0];
+                let x0 = x_at(first.d);
+                sink.BeginFigure(
+                    Vector2 { X: x0, Y: chart_bot },
+                    D2D1_FIGURE_BEGIN_FILLED,
+                );
+                for p in &elev.pts {
+                    sink.AddLine(Vector2 { X: x_at(p.d), Y: y_at(p.y) });
+                }
+                let last = elev.pts.last().unwrap();
+                sink.AddLine(Vector2 {
+                    X: x_at(last.d),
+                    Y: chart_bot,
+                });
+                sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                let _ = sink.Close();
+
+                let grad_stops = [
+                    D2D1_GRADIENT_STOP {
+                        position: 0.0,
+                        color: color(1.0, 0.310, 0.541, 0.55),
+                    },
+                    D2D1_GRADIENT_STOP {
+                        position: 1.0,
+                        color: color(0.176, 0.706, 1.0, 0.06),
+                    },
+                ];
+                let coll = self
+                    .rt
+                    .CreateGradientStopCollection(&grad_stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+                    .expect("grad coll");
+                let fill = self
+                    .rt
+                    .CreateLinearGradientBrush(
+                        &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                            startPoint: Vector2 { X: pad, Y: chart_top },
+                            endPoint: Vector2 { X: pad, Y: chart_bot },
+                        },
+                        None,
+                        &coll,
+                    )
+                    .expect("grad brush");
+                self.rt.FillGeometry(&geom, &fill, None);
+
+                self.b.scratch.SetColor(&C_ELEV_LINE);
+                let line_w = (w * 0.006).clamp(1.5, 3.0);
+                for i in 1..elev.pts.len() {
+                    let a = &elev.pts[i - 1];
+                    let b = &elev.pts[i];
+                    self.rt.DrawLine(
+                        Vector2 { X: x_at(a.d), Y: y_at(a.y) },
+                        Vector2 { X: x_at(b.d), Y: y_at(b.y) },
+                        &self.b.scratch,
+                        line_w,
+                        None,
+                    );
+                }
+            }
+
+            if elev.pts.len() >= 2 {
+                let cy = y_at(elev.marker_y);
+                let cx = x_at(elev.marker_d.min(d_max));
+                let dot_r = (w * 0.014).clamp(3.5, 6.0);
+                let dot = D2D1_ELLIPSE {
+                    point: Vector2 { X: cx, Y: cy },
+                    radiusX: dot_r,
+                    radiusY: dot_r,
+                };
+                self.rt.FillEllipse(&dot, &self.b.white);
+                self.b.scratch.SetColor(&C_ELEV_MARKER);
+                self.rt.DrawEllipse(&dot, &self.b.scratch, 1.5, None);
+            }
+        }
+
+        let min_l = if elev.pts.len() >= 2 {
+            format!("{} m", elev.min.round() as i32)
+        } else {
+            "–".to_string()
+        };
+        let max_l = if elev.pts.len() >= 2 {
+            format!("{} m", elev.max.round() as i32)
+        } else {
+            "–".to_string()
+        };
+        let foot_y = h - foot_h + h * 0.01;
+        let foot_bot = h - pad * 0.4;
+        self.text(
+            "MIN",
+            &self.f.small_left,
+            rectf(pad, foot_y, pad + w * 0.12, foot_bot),
+            &self.b.gray,
+        );
+        self.text(
+            &min_l,
+            &self.f.small_left,
+            rectf(pad + w * 0.1, foot_y, pad + w * 0.32, foot_bot),
+            &self.b.white,
+        );
+        self.text(
+            "MAX",
+            &self.f.small_right,
+            rectf(w - pad - w * 0.32, foot_y, w - pad - w * 0.2, foot_bot),
+            &self.b.gray,
+        );
+        self.text(
+            &max_l,
+            &self.f.small_right,
+            rectf(w - pad - w * 0.2, foot_y, w - pad, foot_bot),
+            &self.b.white,
+        );
+
+        let cur = if f.fresh {
+            format!("{} m", f.elev_m.round() as i32)
+        } else {
+            "–".to_string()
+        };
+        self.text(
+            &cur,
+            &self.f.speed,
+            rectf(pad, chart_top + chart_h * 0.04, pad + w * 0.38, chart_top + chart_h * 0.22),
+            &self.b.white,
+        );
+    }
+
+    /// Retorna `true` se desenhou (chamou `UpdateLayeredWindow`).
+    fn draw(
+        &self,
+        f: &DisplayFrame,
+        elev: &ElevationProfile,
+        edit: bool,
+        accent: D2D1_COLOR_F,
+        gear_accent: bool,
+    ) -> Result<bool> {
         let visible = edit || f.alpha > 0.01;
         self.set_shown(visible);
         if !visible {
-            return Ok(());
+            self.paint_key.set(0);
+            return Ok(false);
         }
+
+        let accent_bits = THEME.get().hue.to_bits() ^ if gear_accent { 1 } else { 0 };
+        let elev_opt = if matches!(self.kind, Kind::Elevation) {
+            Some(elev)
+        } else {
+            None
+        };
+        let key = display::panel_paint_key(self.kind.panel_kind(), f, edit, accent_bits, elev_opt);
+        if !edit && !f.animating && key == self.paint_key.get() {
+            return Ok(false);
+        }
+        self.paint_key.set(key);
 
         let (sw, sh) = (self.size.cx as f32, self.size.cy as f32);
         let (dw, dh) = (self.design.cx as f32, self.design.cy as f32);
-        let s = (sw / dw).min(sh / dh);
+        let (cw, ch, s) = panel_canvas(sw, sh, dw, dh);
+        let radius = glass_radius(cw, ch);
         let content = Matrix3x2 {
             M11: s,
             M12: 0.0,
             M21: 0.0,
             M22: s,
-            M31: (sw - dw * s) / 2.0,
-            M32: (sh - dh * s) / 2.0,
+            M31: 0.0,
+            M32: 0.0,
         };
         let layer_alpha = if edit { 1.0 } else { f.alpha.clamp(0.0, 1.0) };
         let shift = f.near && matches!(self.kind, Kind::Cluster);
-        let card_shift = shift && !f.gear_accent;
+        let card_shift = shift && !gear_accent;
         unsafe {
             let full = RECT { left: 0, top: 0, right: self.size.cx, bottom: self.size.cy };
             self.dcrt.BindDC(self.memdc, &full)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
 
-            // Modo edição: fundo de captura quase invisível na janela INTEIRA, para
-            // todo pixel (bordas/cantos/margens) receber mouse → cursores e resize
-            // funcionam mesmo em cards pequenos ou de proporção diferente.
             if edit {
                 self.rt.SetTransform(&Matrix3x2 { M11: 1.0, M12: 0.0, M21: 0.0, M22: 1.0, M31: 0.0, M32: 0.0 });
                 self.b.scratch.SetColor(&color(0.55, 0.6, 0.7, 0.06));
                 self.rt.FillRectangle(&rectf(0.0, 0.0, sw, sh), &self.b.scratch);
             }
 
-            // Vidro fosco do card (sob a mesma transformação do conteúdo).
             self.rt.SetTransform(&content);
-            self.draw_card(dw, dh, edit, card_shift, f.accent);
+            self.draw_card(cw, ch, radius, edit, card_shift, accent);
             match self.kind {
-                Kind::Cluster => self.draw_cluster(f),
-                Kind::Tires => self.draw_tires(f),
-                Kind::GForce => self.draw_gforce(f),
+                Kind::Cluster => self.draw_cluster(f, accent, gear_accent, cw, ch),
+                Kind::Tires => self.draw_tires(f, cw, ch),
+                Kind::GForce => self.draw_gforce(f, cw, ch),
+                Kind::Elevation => self.draw_elevation(f, elev, cw, ch),
             }
 
             self.rt.EndDraw(None, None)?;
         }
         let alpha = if edit { 255 } else { (layer_alpha * 255.0).round() as u8 };
-        present(self.hwnd, self.memdc, self.pos, self.size, alpha)
+        present(self.hwnd, self.memdc, self.pos, self.size, alpha)?;
+        Ok(true)
     }
 }
 
@@ -1643,7 +1804,7 @@ pub fn run() -> Result<()> {
         THEME.set(load_theme());
 
         let mut panels: Vec<Panel> = Vec::new();
-        for kind in [Kind::Cluster, Kind::Tires, Kind::GForce] {
+        for kind in [Kind::Cluster, Kind::Tires, Kind::GForce, Kind::Elevation] {
             let (dw, dh) = kind.size();
             let (x, y, w, h) = saved.get(kind.key()).copied().unwrap_or_else(|| {
                 let (dx, dy) = kind.default_pos(sw, sh);
@@ -1662,7 +1823,8 @@ pub fn run() -> Result<()> {
         let backdrop = Backdrop::new(backdrop_class, instance, &factory, sw, sh)?;
         let toolbar = Toolbar::new(toolbar_class, instance, &factory, &fonts, sw)?;
 
-        let mut smoother = Smoother::new();
+        let mut smoother = DisplaySmoother::new();
+        let mut last_frame = Instant::now();
 
         let shared = Arc::new(Shared::new());
         let port = std::env::var("FORZA_UDP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(UDP_PORT);
@@ -1700,20 +1862,38 @@ pub fn run() -> Result<()> {
 
             let snap = shared.latest();
             let edit = EDIT.load(Ordering::Relaxed);
-            let fd = smoother.tick(&snap, edit);
+            let theme = THEME.get();
+            let accent = hue_color(theme.hue);
+            let fd = smoother.tick(&snap, edit).clone();
+            let elev = smoother.elevation();
+            let mut presented = false;
             for p in panels.iter_mut() {
                 if edit {
-                    sync_panel_geometry(p); // segue arraste/resize do OS
+                    sync_panel_geometry(p);
                 }
-                if let Err(e) = p.draw(&fd, edit) {
-                    eprintln!("[overlay] draw: {e:?}");
+                match p.draw(&fd, &elev, edit, accent, theme.gear_target) {
+                    Ok(true) => presented = true,
+                    Ok(false) => {}
+                    Err(e) => eprintln!("[overlay] draw: {e:?}"),
                 }
             }
             if edit {
                 let _ = toolbar.draw();
                 bring_to_top(toolbar.hwnd);
+                presented = true;
             }
-            let _ = DwmFlush();
+
+            let elapsed = last_frame.elapsed();
+            if presented || fd.animating || edit {
+                last_frame = Instant::now();
+                if elapsed < Duration::from_millis(FRAME_MIN_MS) {
+                    thread::sleep(Duration::from_millis(FRAME_MIN_MS) - elapsed);
+                }
+            } else if fd.alpha < 0.01 {
+                thread::sleep(Duration::from_millis(IDLE_SLEEP_MS));
+            } else {
+                thread::sleep(Duration::from_millis(FRAME_MIN_MS));
+            }
         }
     }
 }

@@ -170,12 +170,21 @@ impl<'a> Packet<'a> {
     pub fn steer(&self) -> i8 {
         self.d_i8(dash::STEER)
     }
-    fn pos(&self) -> [f32; 3] {
+    pub fn pos(&self) -> [f32; 3] {
         [
             self.d_f32(dash::POS_X),
             self.d_f32(dash::POS_Y),
             self.d_f32(dash::POS_Z),
         ]
+    }
+    pub fn pos_x(&self) -> f32 {
+        self.d_f32(dash::POS_X)
+    }
+    pub fn pos_y(&self) -> f32 {
+        self.d_f32(dash::POS_Y)
+    }
+    pub fn pos_z(&self) -> f32 {
+        self.d_f32(dash::POS_Z)
     }
     pub fn tire_temps(&self) -> [f32; 4] {
         [
