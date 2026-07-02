@@ -5,12 +5,12 @@
 
 #![allow(clippy::too_many_lines)]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -29,13 +29,17 @@ use windows_numerics::{Matrix3x2, Vector2};
 
 use crate::forza::display::{self, DisplayFrame, DisplaySmoother, PanelKind};
 use crate::forza::elevation::ElevationProfile;
-use crate::forza::tires::temp_color;
 use crate::forza::state::Shared;
+use crate::forza::tires::temp_color;
 use crate::forza::udp;
+use crate::forza::visibility;
+use crate::forza::worldmap::{self, WorldMapRecorder};
+use crate::forza::TRACK_MAPPING_ENABLED;
 
 const UDP_PORT: u16 = 20066;
 const HK_QUIT: i32 = 1;
 const HK_EDIT: i32 = 2;
+const HK_HIDE: i32 = 3;
 const GRID: i32 = 40;
 const RESIZE_MARGIN: i32 = 8;
 const MIN_SZ: i32 = 80;
@@ -44,21 +48,36 @@ const FRAME_MIN_MS: u64 = 16;
 const IDLE_SLEEP_MS: u64 = 50;
 
 static EDIT: AtomicBool = AtomicBool::new(false);
+static HUD_HIDDEN: AtomicBool = AtomicBool::new(false);
 
-// Tema editável (thread da UI): matiz do destaque do shift + se ele colore a
-// marcha (true) ou o card (false). Roda do mouse muda a cor; botão direito alterna.
+// Tema editável (thread da UI): matiz do destaque do shift, se ele colore a
+// marcha (true) ou o card (false), opacidade e tom do vidro dos cards.
+// Roda do mouse muda a cor; botão direito alterna o alvo do shift.
 #[derive(Clone, Copy)]
 struct Theme {
     hue: f32,
     gear_target: bool,
-}
-thread_local! {
-    static THEME: Cell<Theme> = const { Cell::new(Theme { hue: 4.0, gear_target: false }) };
+    /// Opacidade do vidro (alpha do topo; a base escala junto).
+    glass_alpha: f32,
+    /// Tom do vidro: negativo = neutro escuro; senão matiz 0..360.
+    glass_tone: f32,
 }
 
-/// HSV→RGB (s/v fixos, cor viva) para o matiz do destaque.
-fn hue_color(h: f32) -> D2D1_COLOR_F {
-    let (s, v) = (0.82f32, 0.96f32);
+const THEME_DEFAULT: Theme = Theme {
+    hue: 4.0,
+    gear_target: false,
+    glass_alpha: 0.62,
+    glass_tone: -1.0,
+};
+
+thread_local! {
+    static THEME: Cell<Theme> = const { Cell::new(THEME_DEFAULT) };
+    static PANEL_VISIBLE: Cell<[bool; PANEL_COUNT]> = const { Cell::new([true; PANEL_COUNT]) };
+    static TOOLBAR_DOWN: Cell<i32> = const { Cell::new(HIT_NONE) };
+}
+
+/// HSV→RGB genérico.
+fn hsv_color(h: f32, s: f32, v: f32, a: f32) -> D2D1_COLOR_F {
     let c = v * s;
     let hp = h.rem_euclid(360.0) / 60.0;
     let x = c * (1.0 - (hp.rem_euclid(2.0) - 1.0).abs());
@@ -71,7 +90,12 @@ fn hue_color(h: f32) -> D2D1_COLOR_F {
         _ => (c, 0.0, x),
     };
     let m = v - c;
-    color(r + m, g + m, b + m, 1.0)
+    color(r + m, g + m, b + m, a)
+}
+
+/// Matiz do destaque (s/v fixos, cor viva).
+fn hue_color(h: f32) -> D2D1_COLOR_F {
+    hsv_color(h, 0.82, 0.96, 1.0)
 }
 
 // Move/resize manual (thread da UI). Resize escala a partir do canto fixo
@@ -133,17 +157,48 @@ const GF_H: i32 = 250;
 const EL_W: i32 = 300;
 const EL_H: i32 = 200;
 
-// --- Barra de cores (modo edição) ---
+// --- Toolbar de edição ---
+const PANEL_COUNT: usize = 4;
+const PANEL_KINDS: [Kind; PANEL_COUNT] =
+    [Kind::Cluster, Kind::Tires, Kind::GForce, Kind::Elevation];
 const SWATCHES: [f32; 8] = [4.0, 30.0, 50.0, 140.0, 188.0, 218.0, 280.0, 320.0];
-const TB_PAD: i32 = 12;
-const TB_SW: i32 = 34; // tamanho do swatch
-const TB_GAP: i32 = 6;
-const TB_TOGGLE_W: i32 = 104;
-const TB_H: i32 = 58;
-const TB_W: i32 = TB_PAD + 8 * TB_SW + 7 * TB_GAP + 8 + TB_TOGGLE_W + TB_PAD;
-/// x local do botão CARD/MARCHA.
-const TB_TOGGLE_X: i32 = TB_PAD + 8 * TB_SW + 7 * TB_GAP + 8;
-const TB_SWATCH_Y: i32 = (TB_H - TB_SW) / 2;
+const TB_PAD: i32 = 14;
+const TB_LABEL_W: i32 = 52;
+const TB_SW: i32 = 26;
+const TB_GAP: i32 = 8;
+const TB_COLOR_X: i32 = TB_PAD + TB_LABEL_W;
+const TB_SWATCH_Y: i32 = 38;
+const TB_COLOR_W: i32 = 8 * TB_SW + 7 * TB_GAP;
+const TB_TARGET_X: i32 = TB_COLOR_X + TB_COLOR_W + 16;
+const TB_TARGET_W: i32 = 174;
+const TB_TARGET_SEG_W: i32 = TB_TARGET_W / 2;
+const TB_TARGET_H: i32 = 30;
+const TB_TARGET_Y: i32 = TB_SWATCH_Y - 2;
+const TB_PANEL_Y: i32 = 82;
+const TB_PANEL_W: i32 = 78;
+const TB_PANEL_H: i32 = 30;
+const TB_PANEL_GAP: i32 = 6;
+const TB_PANEL_X: i32 = TB_COLOR_X;
+// Linha 3: sliders do vidro (opacidade + tom).
+const TB_ROW3_Y: i32 = 122;
+const TB_SLIDER_H: i32 = 26;
+const TB_GA_X: i32 = TB_COLOR_X;
+const TB_GA_W: i32 = 150;
+const TB_GT_LABEL_X: i32 = TB_GA_X + TB_GA_W + 16;
+const TB_GT_X: i32 = TB_GT_LABEL_X + 38;
+const TB_GT_W: i32 = TB_W - TB_PAD - TB_GT_X;
+/// Célula "neutro" no início do slider de tom.
+const TONE_NEUTRAL_W: i32 = 22;
+const TONE_GAP: i32 = 4;
+const TB_H: i32 = 160;
+const TB_W: i32 = TB_TARGET_X + TB_TARGET_W + TB_PAD;
+const HIT_NONE: i32 = -1;
+const HIT_SWATCH_BASE: i32 = 10;
+const HIT_TARGET_CARD: i32 = 100;
+const HIT_TARGET_GEAR: i32 = 101;
+const HIT_PANEL_BASE: i32 = 200;
+const HIT_GLASS_ALPHA: i32 = 300;
+const HIT_GLASS_TONE: i32 = 301;
 
 const fn color(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -160,18 +215,48 @@ const C_EDIT: D2D1_COLOR_F = color(0.40, 0.80, 1.0, 0.9);
 const C_ELEV_LINE: D2D1_COLOR_F = color(0.224, 0.780, 1.0, 1.0);
 const C_ELEV_MARKER: D2D1_COLOR_F = color(1.0, 0.310, 0.541, 1.0);
 
-// Glassmorphism (vidro fosco simulado): fundo translúcido em gradiente +
-// borda clara + brilho interno. O jogo aparece tingido através do card.
-const GLASS_TOP: D2D1_COLOR_F = color(0.172, 0.192, 0.235, 0.55); // #2c313c a 0.55
-const GLASS_BOT: D2D1_COLOR_F = color(0.063, 0.071, 0.094, 0.34); // #101218 a 0.34
-const GLASS_BORDER: D2D1_COLOR_F = color(1.0, 1.0, 1.0, 0.14);
-const GLASS_HI: D2D1_COLOR_F = color(1.0, 1.0, 1.0, 0.07);
+// Vidro escuro polido: tinge o jogo por baixo em vez de "esfumaçar" (nada de
+// cinza claro leitoso), gradiente vertical sutil e sem bordas — o contorno vem
+// do contraste do próprio card. RGB base do tom neutro; a opacidade e o tom
+// vêm do tema (sliders VIDRO/TOM da toolbar de edição).
+const GLASS_TOP: D2D1_COLOR_F = color(0.071, 0.078, 0.098, 0.62); // #121419
+const GLASS_BOT: D2D1_COLOR_F = color(0.027, 0.031, 0.043, 0.48); // #07080b
+const GLASS_ALPHA_MIN: f32 = 0.12;
+const GLASS_ALPHA_MAX: f32 = 0.95;
+
+/// Topo/base do gradiente do vidro a partir do tema: opacidade ajustável e
+/// tom opcional (negativo = neutro escuro; senão matiz tingido, sem neon).
+fn glass_colors(t: Theme) -> (D2D1_COLOR_F, D2D1_COLOR_F) {
+    let a_top = t.glass_alpha.clamp(GLASS_ALPHA_MIN, GLASS_ALPHA_MAX);
+    let a_bot = a_top * 0.77;
+    if t.glass_tone >= 0.0 {
+        (
+            hsv_color(t.glass_tone, 0.50, 0.17, a_top),
+            hsv_color(t.glass_tone, 0.55, 0.075, a_bot),
+        )
+    } else {
+        let mut top = GLASS_TOP;
+        top.a = a_top;
+        let mut bot = GLASS_BOT;
+        bot.a = a_bot;
+        (top, bot)
+    }
+}
 
 fn rectf(left: f32, top: f32, right: f32, bottom: f32) -> D2D_RECT_F {
-    D2D_RECT_F { left, top, right, bottom }
+    D2D_RECT_F {
+        left,
+        top,
+        right,
+        bottom,
+    }
 }
 fn rounded(r: D2D_RECT_F, radius: f32) -> D2D1_ROUNDED_RECT {
-    D2D1_ROUNDED_RECT { rect: r, radiusX: radius, radiusY: radius }
+    D2D1_ROUNDED_RECT {
+        rect: r,
+        radiusX: radius,
+        radiusY: radius,
+    }
 }
 
 /// Espaço de desenho que preenche a janela (sem letterbox) com escala uniforme.
@@ -202,29 +287,152 @@ fn soft_snap(v: i32) -> i32 {
 
 fn lparam_xy(lparam: LPARAM) -> (i32, i32) {
     let v = lparam.0 as u32;
-    ((v & 0xFFFF) as i16 as i32, ((v >> 16) & 0xFFFF) as i16 as i32)
+    (
+        (v & 0xFFFF) as i16 as i32,
+        ((v >> 16) & 0xFFFF) as i16 as i32,
+    )
 }
 
 fn swatch_rect(i: usize) -> (i32, i32, i32, i32) {
-    let x = TB_PAD + i as i32 * (TB_SW + TB_GAP);
+    let x = TB_COLOR_X + i as i32 * (TB_SW + TB_GAP);
     (x, TB_SWATCH_Y, x + TB_SW, TB_SWATCH_Y + TB_SW)
 }
 
-fn toolbar_click(x: i32, y: i32) {
+fn target_rect() -> (i32, i32, i32, i32) {
+    (
+        TB_TARGET_X,
+        TB_TARGET_Y,
+        TB_TARGET_X + TB_TARGET_W,
+        TB_TARGET_Y + TB_TARGET_H,
+    )
+}
+
+fn panel_toggle_rect(i: usize) -> (i32, i32, i32, i32) {
+    let x = TB_PANEL_X + i as i32 * (TB_PANEL_W + TB_PANEL_GAP);
+    (x, TB_PANEL_Y, x + TB_PANEL_W, TB_PANEL_Y + TB_PANEL_H)
+}
+
+fn glass_alpha_rect() -> (i32, i32, i32, i32) {
+    (TB_GA_X, TB_ROW3_Y, TB_GA_X + TB_GA_W, TB_ROW3_Y + TB_SLIDER_H)
+}
+
+fn glass_tone_rect() -> (i32, i32, i32, i32) {
+    (TB_GT_X, TB_ROW3_Y, TB_GT_X + TB_GT_W, TB_ROW3_Y + TB_SLIDER_H)
+}
+
+/// Início da faixa de matiz (depois da célula "neutro") no slider de tom.
+fn tone_strip_x() -> i32 {
+    TB_GT_X + TONE_NEUTRAL_W + TONE_GAP
+}
+
+fn alpha_from_x(x: i32) -> f32 {
+    let f = ((x - TB_GA_X) as f32 / TB_GA_W as f32).clamp(0.0, 1.0);
+    GLASS_ALPHA_MIN + f * (GLASS_ALPHA_MAX - GLASS_ALPHA_MIN)
+}
+
+fn alpha_knob_x(a: f32) -> f32 {
+    let f = ((a - GLASS_ALPHA_MIN) / (GLASS_ALPHA_MAX - GLASS_ALPHA_MIN)).clamp(0.0, 1.0);
+    TB_GA_X as f32 + f * TB_GA_W as f32
+}
+
+fn tone_from_x(x: i32) -> f32 {
+    let sx = tone_strip_x();
+    if x < sx - TONE_GAP / 2 {
+        return -1.0;
+    }
+    ((x - sx) as f32 / (TB_GT_X + TB_GT_W - sx) as f32).clamp(0.0, 1.0) * 360.0
+}
+
+fn tone_knob_x(tone: f32) -> f32 {
+    if tone < 0.0 {
+        (TB_GT_X + TONE_NEUTRAL_W / 2) as f32
+    } else {
+        let sx = tone_strip_x();
+        sx as f32 + (tone / 360.0).clamp(0.0, 1.0) * (TB_GT_X + TB_GT_W - sx) as f32
+    }
+}
+
+fn in_rect(x: i32, y: i32, r: (i32, i32, i32, i32)) -> bool {
+    x >= r.0 && x < r.2 && y >= r.1 && y < r.3
+}
+
+fn toolbar_hit(x: i32, y: i32) -> i32 {
+    for i in 0..SWATCHES.len() {
+        if in_rect(x, y, swatch_rect(i)) {
+            return HIT_SWATCH_BASE + i as i32;
+        }
+    }
+
+    if in_rect(x, y, target_rect()) {
+        return if x >= TB_TARGET_X + TB_TARGET_SEG_W {
+            HIT_TARGET_GEAR
+        } else {
+            HIT_TARGET_CARD
+        };
+    }
+
+    for i in 0..PANEL_COUNT {
+        if in_rect(x, y, panel_toggle_rect(i)) {
+            return HIT_PANEL_BASE + i as i32;
+        }
+    }
+
+    if in_rect(x, y, glass_alpha_rect()) {
+        return HIT_GLASS_ALPHA;
+    }
+    if in_rect(x, y, glass_tone_rect()) {
+        return HIT_GLASS_TONE;
+    }
+
+    HIT_NONE
+}
+
+/// Aplica o arrasto de um slider do vidro (chamado no down e no move).
+fn toolbar_slider_drag(hit: i32, x: i32) {
     let mut t = THEME.get();
-    for (i, hue) in SWATCHES.iter().enumerate() {
-        let (l, tt, r, b) = swatch_rect(i);
-        if x >= l && x < r && y >= tt && y < b {
+    match hit {
+        HIT_GLASS_ALPHA => t.glass_alpha = alpha_from_x(x),
+        HIT_GLASS_TONE => t.glass_tone = tone_from_x(x),
+        _ => return,
+    }
+    THEME.set(t);
+}
+
+fn toolbar_hover_hit(hwnd: HWND) -> i32 {
+    unsafe {
+        let mut m = POINT::default();
+        let _ = GetCursorPos(&mut m);
+        let r = window_rect(hwnd);
+        if m.x < r.left || m.x >= r.right || m.y < r.top || m.y >= r.bottom {
+            return HIT_NONE;
+        }
+        toolbar_hit(m.x - r.left, m.y - r.top)
+    }
+}
+
+fn toolbar_activate(hit: i32) {
+    let mut t = THEME.get();
+    if (HIT_SWATCH_BASE..HIT_SWATCH_BASE + SWATCHES.len() as i32).contains(&hit) {
+        if let Some(hue) = SWATCHES.get((hit - HIT_SWATCH_BASE) as usize) {
             t.hue = *hue;
             THEME.set(t);
             save_theme();
-            return;
         }
+        return;
     }
-    if x >= TB_TOGGLE_X && x < TB_TOGGLE_X + TB_TOGGLE_W && y >= TB_SWATCH_Y && y < TB_SWATCH_Y + TB_SW {
-        t.gear_target = !t.gear_target;
+
+    if hit == HIT_TARGET_CARD || hit == HIT_TARGET_GEAR {
+        t.gear_target = hit == HIT_TARGET_GEAR;
         THEME.set(t);
         save_theme();
+        return;
+    }
+
+    if (HIT_PANEL_BASE..HIT_PANEL_BASE + PANEL_COUNT as i32).contains(&hit) {
+        let i = (hit - HIT_PANEL_BASE) as usize;
+        let mut visible = PANEL_VISIBLE.get();
+        visible[i] = !visible[i];
+        PANEL_VISIBLE.set(visible);
     }
 }
 
@@ -261,6 +469,22 @@ impl Kind {
             Kind::Elevation => "elevation",
         }
     }
+    fn idx(self) -> usize {
+        match self {
+            Kind::Cluster => 0,
+            Kind::Tires => 1,
+            Kind::GForce => 2,
+            Kind::Elevation => 3,
+        }
+    }
+    fn short_label(self) -> &'static str {
+        match self {
+            Kind::Cluster => "RPM",
+            Kind::Tires => "PNEUS",
+            Kind::GForce => "G",
+            Kind::Elevation => "ALT",
+        }
+    }
     fn panel_kind(self) -> PanelKind {
         match self {
             Kind::Cluster => PanelKind::Cluster,
@@ -282,6 +506,9 @@ struct Fonts {
     small: IDWriteTextFormat,
     small_left: IDWriteTextFormat,
     small_right: IDWriteTextFormat,
+    toolbar_button: IDWriteTextFormat,
+    toolbar_label: IDWriteTextFormat,
+    toolbar_caption: IDWriteTextFormat,
 }
 
 struct Brushes {
@@ -293,12 +520,70 @@ struct Brushes {
     gray: ID2D1SolidColorBrush,
     scratch: ID2D1SolidColorBrush,
     grad: ID2D1LinearGradientBrush,
-    glass: ID2D1LinearGradientBrush, // fundo do card (gradiente vertical)
-    glass_border: ID2D1SolidColorBrush,
-    glass_hi: ID2D1SolidColorBrush,
+    /// Fundo do card (gradiente vertical) — recriado quando opacidade/tom mudam.
+    glass: RefCell<GlassCache>,
+    design_h: f32,
+}
+
+struct GlassCache {
+    key: u64,
+    brush: ID2D1LinearGradientBrush,
+}
+
+fn glass_key(t: Theme) -> u64 {
+    ((t.glass_alpha.to_bits() as u64) << 32) | t.glass_tone.to_bits() as u64
+}
+
+fn make_glass_brush(
+    rt: &ID2D1RenderTarget,
+    t: Theme,
+    design_h: f32,
+) -> Result<ID2D1LinearGradientBrush> {
+    let (top, bot) = glass_colors(t);
+    unsafe {
+        let stops = [
+            D2D1_GRADIENT_STOP {
+                position: 0.0,
+                color: top,
+            },
+            D2D1_GRADIENT_STOP {
+                position: 1.0,
+                color: bot,
+            },
+        ];
+        let coll = rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
+        rt.CreateLinearGradientBrush(
+            &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                startPoint: Vector2 { X: 0.0, Y: 0.0 },
+                endPoint: Vector2 {
+                    X: 0.0,
+                    Y: design_h,
+                },
+            },
+            None,
+            &coll,
+        )
+    }
 }
 
 impl Brushes {
+    /// Brush do vidro para o tema atual — reusa o cache se opacidade/tom não mudaram.
+    fn glass(&self, rt: &ID2D1RenderTarget, t: Theme) -> Result<ID2D1LinearGradientBrush> {
+        let key = glass_key(t);
+        {
+            let g = self.glass.borrow();
+            if g.key == key {
+                return Ok(g.brush.clone());
+            }
+        }
+        let brush = make_glass_brush(rt, t, self.design_h)?;
+        *self.glass.borrow_mut() = GlassCache {
+            key,
+            brush: brush.clone(),
+        };
+        Ok(brush)
+    }
+
     fn new(rt: &ID2D1RenderTarget, design_h: f32) -> Result<Self> {
         unsafe {
             let track = rt.CreateSolidColorBrush(&C_TRACK, None)?;
@@ -309,35 +594,40 @@ impl Brushes {
             let gray = rt.CreateSolidColorBrush(&C_GRAY, None)?;
             let scratch = rt.CreateSolidColorBrush(&C_WHITE, None)?;
             let stops = [
-                D2D1_GRADIENT_STOP { position: 0.0, color: C_GREEN },
-                D2D1_GRADIENT_STOP { position: 0.75, color: C_AMBER },
-                D2D1_GRADIENT_STOP { position: 1.0, color: C_RED },
+                D2D1_GRADIENT_STOP {
+                    position: 0.0,
+                    color: C_GREEN,
+                },
+                D2D1_GRADIENT_STOP {
+                    position: 0.75,
+                    color: C_AMBER,
+                },
+                D2D1_GRADIENT_STOP {
+                    position: 1.0,
+                    color: C_RED,
+                },
             ];
-            let coll = rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
+            let coll =
+                rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
             let grad = rt.CreateLinearGradientBrush(
                 &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: Vector2 { X: CL_RIGHT_X, Y: 0.0 },
-                    endPoint: Vector2 { X: CL_RIGHT_R, Y: 0.0 },
+                    startPoint: Vector2 {
+                        X: CL_RIGHT_X,
+                        Y: 0.0,
+                    },
+                    endPoint: Vector2 {
+                        X: CL_RIGHT_R,
+                        Y: 0.0,
+                    },
                 },
                 None,
                 &coll,
             )?;
-            // Gradiente vertical do vidro (claro no topo → escuro embaixo).
-            let glass_stops = [
-                D2D1_GRADIENT_STOP { position: 0.0, color: GLASS_TOP },
-                D2D1_GRADIENT_STOP { position: 1.0, color: GLASS_BOT },
-            ];
-            let glass_coll = rt.CreateGradientStopCollection(&glass_stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
-            let glass = rt.CreateLinearGradientBrush(
-                &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: Vector2 { X: 0.0, Y: 0.0 },
-                    endPoint: Vector2 { X: 0.0, Y: design_h },
-                },
-                None,
-                &glass_coll,
-            )?;
-            let glass_border = rt.CreateSolidColorBrush(&GLASS_BORDER, None)?;
-            let glass_hi = rt.CreateSolidColorBrush(&GLASS_HI, None)?;
+            let theme = THEME.get();
+            let glass = RefCell::new(GlassCache {
+                key: glass_key(theme),
+                brush: make_glass_brush(rt, theme, design_h)?,
+            });
             Ok(Self {
                 track,
                 track_edge,
@@ -348,8 +638,7 @@ impl Brushes {
                 scratch,
                 grad,
                 glass,
-                glass_border,
-                glass_hi,
+                design_h,
             })
         }
     }
@@ -358,13 +647,14 @@ impl Brushes {
 fn make_fonts() -> Result<Fonts> {
     unsafe {
         let dwrite: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
-        let make = |size: f32,
+        let make = |family: PCWSTR,
+                    size: f32,
                     weight: DWRITE_FONT_WEIGHT,
                     align: DWRITE_TEXT_ALIGNMENT,
                     para: DWRITE_PARAGRAPH_ALIGNMENT|
          -> Result<IDWriteTextFormat> {
             let fmt = dwrite.CreateTextFormat(
-                w!("Segoe UI Variable"),
+                family,
                 None,
                 weight,
                 DWRITE_FONT_STYLE_NORMAL,
@@ -376,48 +666,80 @@ fn make_fonts() -> Result<Fonts> {
             fmt.SetParagraphAlignment(para)?;
             Ok(fmt)
         };
+        // Cortes ópticos do Segoe UI Variable (Win11): "Display" para números
+        // grandes, "Text" desenhado para 9–14px — nítido em texto pequeno.
+        let display = w!("Segoe UI Variable Display");
+        let text = w!("Segoe UI Variable Text");
         Ok(Fonts {
             gear: make(
+                display,
                 176.0,
                 DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             speed: make(
+                display,
                 32.0,
                 DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_TEXT_ALIGNMENT_LEADING,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             tire: make(
+                display,
                 26.0,
                 DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             micro: make(
+                text,
                 11.0,
-                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_MEDIUM,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             small: make(
+                text,
                 13.0,
-                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_MEDIUM,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
             small_left: make(
+                text,
                 13.0,
-                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_MEDIUM,
                 DWRITE_TEXT_ALIGNMENT_LEADING,
                 DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
             )?,
             small_right: make(
+                text,
                 13.0,
-                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_WEIGHT_MEDIUM,
                 DWRITE_TEXT_ALIGNMENT_TRAILING,
                 DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+            )?,
+            toolbar_button: make(
+                text,
+                12.0,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_TEXT_ALIGNMENT_CENTER,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+            )?,
+            toolbar_label: make(
+                text,
+                11.0,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_TEXT_ALIGNMENT_LEADING,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+            )?,
+            toolbar_caption: make(
+                text,
+                10.5,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_TEXT_ALIGNMENT_LEADING,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
             )?,
         })
     }
@@ -550,7 +872,15 @@ fn set_interactive(hwnd: HWND, interactive: bool) {
 
 fn bring_to_top(hwnd: HWND) {
     unsafe {
-        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
     }
 }
 
@@ -569,6 +899,7 @@ struct Panel {
     rt: ID2D1RenderTarget,
     b: Brushes,
     f: Fonts,
+    enabled: bool,
     shown: Cell<bool>,
     paint_key: Cell<u64>,
 }
@@ -582,13 +913,19 @@ impl Panel {
         fonts: &Fonts,
         pos: (i32, i32),
         size: (i32, i32),
+        enabled: bool,
     ) -> Result<Self> {
         let (dw, dh) = kind.size();
         // Mantém a proporção do design (a escala uniforme preenche sem margem);
         // corrige tamanhos salvos fora de proporção.
         let min_scale = MIN_SZ as f32 / (dw.min(dh) as f32);
-        let scale = (size.0 as f32 / dw as f32).max(size.1 as f32 / dh as f32).max(min_scale);
-        let (w, h) = ((dw as f32 * scale).round() as i32, (dh as f32 * scale).round() as i32);
+        let scale = (size.0 as f32 / dw as f32)
+            .max(size.1 as f32 / dh as f32)
+            .max(min_scale);
+        let (w, h) = (
+            (dw as f32 * scale).round() as i32,
+            (dh as f32 * scale).round() as i32,
+        );
         let hwnd = make_window(class, instance, pos.0, pos.1, w, h)?;
         unsafe {
             // Guarda a proporção do design para a trava de aspecto no resize.
@@ -597,9 +934,12 @@ impl Panel {
         let (memdc, bitmap) = make_dib(w, h)?;
         let dcrt = make_dcrt(factory)?;
         let rt: ID2D1RenderTarget = dcrt.cast()?;
+        // ClearType não funciona sobre alpha por pixel (franja/borrão em janela
+        // layered) — grayscale dá contorno limpo em qualquer fundo.
+        unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE) };
         let b = Brushes::new(&rt, dh as f32)?;
         unsafe {
-            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            let _ = ShowWindow(hwnd, SW_HIDE);
         }
         Ok(Self {
             kind,
@@ -614,9 +954,21 @@ impl Panel {
             rt,
             b,
             f: fonts.clone(),
+            enabled,
             shown: Cell::new(false),
             paint_key: Cell::new(0),
         })
+    }
+
+    fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled == enabled {
+            return;
+        }
+        self.enabled = enabled;
+        self.paint_key.set(0);
+        if !enabled {
+            self.set_shown(false);
+        }
     }
 
     fn set_shown(&self, show: bool) {
@@ -649,34 +1001,48 @@ impl Panel {
     fn text(&self, s: &str, fmt: &IDWriteTextFormat, r: D2D_RECT_F, brush: &ID2D1SolidColorBrush) {
         let wide: Vec<u16> = s.encode_utf16().collect();
         unsafe {
-            self.rt.DrawText(&wide, fmt, &r, brush, D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
+            self.rt.DrawText(
+                &wide,
+                fmt,
+                &r,
+                brush,
+                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                DWRITE_MEASURING_MODE_NATURAL,
+            );
         }
     }
 
-    /// Superfície de vidro fosco do card (gradiente + borda + brilho interno).
-    /// `shift` = borda vermelha (troca de marcha); `edit` = borda ciano (seleção).
-    fn draw_card(&self, w: f32, h: f32, radius: f32, edit: bool, shift: bool, accent: D2D1_COLOR_F) {
-        let outer = rounded(rectf(0.75, 0.75, w - 0.75, h - 0.75), radius);
-        let inner = rounded(rectf(1.75, 1.75, w - 1.75, h - 1.75), (radius - 1.0).max(4.0));
+    /// Superfície do card: vidro escuro num fill único, sem borda nem brilho —
+    /// o contorno vem do contraste. `shift` = card inteiro na cor do tema;
+    /// `edit` = contorno ciano de seleção (funcional, só no modo edição).
+    fn draw_card(
+        &self,
+        w: f32,
+        h: f32,
+        radius: f32,
+        edit: bool,
+        shift: bool,
+        accent: D2D1_COLOR_F,
+    ) {
+        let card = rounded(rectf(0.0, 0.0, w, h), radius);
         unsafe {
             if shift {
                 // Card inteiro na cor do tema no momento do shift.
                 let mut fill = accent;
                 fill.a = 0.62;
                 self.b.scratch.SetColor(&fill);
-                self.rt.FillRoundedRectangle(&outer, &self.b.scratch);
-            } else {
-                self.rt.FillRoundedRectangle(&outer, &self.b.glass);
+                self.rt.FillRoundedRectangle(&card, &self.b.scratch);
+            } else if let Ok(glass) = self.b.glass(&self.rt, THEME.get()) {
+                self.rt.FillRoundedRectangle(&card, &glass);
             }
-            self.rt.DrawRoundedRectangle(&inner, &self.b.glass_hi, 1.0, None); // brilho interno
             if edit {
                 self.b.scratch.SetColor(&C_EDIT);
-                self.rt.DrawRoundedRectangle(&outer, &self.b.scratch, 2.0, None);
-            } else if shift {
-                self.b.scratch.SetColor(&accent);
-                self.rt.DrawRoundedRectangle(&outer, &self.b.scratch, 2.5, None);
-            } else {
-                self.rt.DrawRoundedRectangle(&outer, &self.b.glass_border, 1.0, None);
+                self.rt.DrawRoundedRectangle(
+                    &rounded(rectf(1.0, 1.0, w - 1.0, h - 1.0), radius),
+                    &self.b.scratch,
+                    2.0,
+                    None,
+                );
             }
         }
     }
@@ -696,21 +1062,35 @@ impl Panel {
             rectf(right_x, y - 9.0 * sx, right_x + label_w, y + 9.0 * sx),
             &self.b.gray,
         );
-        let track = rounded(rectf(bar_x, y - th / 2.0, bar_x + bar_w, y + th / 2.0), th / 2.0);
+        let track = rounded(
+            rectf(bar_x, y - th / 2.0, bar_x + bar_w, y + th / 2.0),
+            th / 2.0,
+        );
         unsafe {
             self.rt.FillRoundedRectangle(&track, &self.b.track);
-            self.rt.DrawRoundedRectangle(&track, &self.b.track_edge, 0.75, None);
+            self.rt
+                .DrawRoundedRectangle(&track, &self.b.track_edge, 0.75, None);
             let f = frac.clamp(0.0, 1.0);
             if f > 0.001 {
                 self.rt.FillRoundedRectangle(
-                    &rounded(rectf(bar_x, y - th / 2.0, bar_x + bar_w * f, y + th / 2.0), th / 2.0),
+                    &rounded(
+                        rectf(bar_x, y - th / 2.0, bar_x + bar_w * f, y + th / 2.0),
+                        th / 2.0,
+                    ),
                     fill,
                 );
             }
         }
     }
 
-    fn draw_cluster(&self, f: &DisplayFrame, accent: D2D1_COLOR_F, gear_accent: bool, w: f32, h: f32) {
+    fn draw_cluster(
+        &self,
+        f: &DisplayFrame,
+        accent: D2D1_COLOR_F,
+        gear_accent: bool,
+        w: f32,
+        h: f32,
+    ) {
         let px = |x: f32| x / CL_W as f32 * w;
         let py = |y: f32| y / CL_H as f32 * h;
         let gear = match f.gear {
@@ -721,7 +1101,11 @@ impl Panel {
         if f.near && gear_accent {
             unsafe { self.b.scratch.SetColor(&accent) };
         }
-        let gb = if f.near && gear_accent { &self.b.scratch } else { &self.b.white };
+        let gb = if f.near && gear_accent {
+            &self.b.scratch
+        } else {
+            &self.b.white
+        };
         self.text(
             &gear,
             &self.f.gear,
@@ -738,24 +1122,91 @@ impl Panel {
         let bar_h = py(CL_BAR_H);
         unsafe {
             self.rt.FillRoundedRectangle(
-                &rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h), bar_h / 2.0),
+                &rounded(
+                    rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h),
+                    bar_h / 2.0,
+                ),
                 &self.b.track,
             );
-            let rpm_track = rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h), bar_h / 2.0);
-            self.rt.DrawRoundedRectangle(&rpm_track, &self.b.track_edge, 0.75, None);
+            let rpm_track = rounded(
+                rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_R), rpm_y + bar_h),
+                bar_h / 2.0,
+            );
+            self.rt
+                .DrawRoundedRectangle(&rpm_track, &self.b.track_edge, 0.75, None);
             if f.rpm_frac > 0.001 {
                 let rw = (px(CL_RIGHT_R) - px(CL_RIGHT_X)) * f.rpm_frac;
                 self.rt.FillRoundedRectangle(
-                    &rounded(rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_X) + rw, rpm_y + bar_h), bar_h / 2.0),
+                    &rounded(
+                        rectf(px(CL_RIGHT_X), rpm_y, px(CL_RIGHT_X) + rw, rpm_y + bar_h),
+                        bar_h / 2.0,
+                    ),
                     &self.b.grad,
                 );
+            }
+
+            // Zona de troca aprendida por carro (revlimit): banda vermelha do
+            // ponto de troca até o corte, tick branco na troca, tick vermelho
+            // no corte quando o limitador já foi observado.
+            if f.shift_frac > 0.05 && f.shift_frac < 0.995 {
+                let bar_x0 = px(CL_RIGHT_X);
+                let bw = px(CL_RIGHT_R) - bar_x0;
+                let z0 = bar_x0 + bw * f.shift_frac;
+                let z1 = bar_x0 + bw * f.limit_frac.clamp(f.shift_frac, 1.0);
+                if z1 - z0 > 1.5 {
+                    self.b
+                        .scratch
+                        .SetColor(&color(C_RED.r, C_RED.g, C_RED.b, 0.30));
+                    self.rt.FillRoundedRectangle(
+                        &rounded(rectf(z0, rpm_y, z1, rpm_y + bar_h), bar_h / 2.0),
+                        &self.b.scratch,
+                    );
+                }
+                let tick = bar_h * 0.7;
+                self.b.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.85));
+                self.rt.DrawLine(
+                    Vector2 {
+                        X: z0,
+                        Y: rpm_y - tick,
+                    },
+                    Vector2 {
+                        X: z0,
+                        Y: rpm_y + bar_h + tick,
+                    },
+                    &self.b.scratch,
+                    1.4,
+                    None,
+                );
+                if f.limit_known {
+                    self.b
+                        .scratch
+                        .SetColor(&color(C_RED.r, C_RED.g, C_RED.b, 0.95));
+                    self.rt.DrawLine(
+                        Vector2 {
+                            X: z1,
+                            Y: rpm_y - tick,
+                        },
+                        Vector2 {
+                            X: z1,
+                            Y: rpm_y + bar_h + tick,
+                        },
+                        &self.b.scratch,
+                        1.4,
+                        None,
+                    );
+                }
             }
         }
 
         self.text(
             &f.car_name,
             &self.f.small_left,
-            rectf(px(CL_RIGHT_X), py(CL_META_Y - 10.0), px(CL_RIGHT_R - 90.0), py(CL_META_Y + 24.0)),
+            rectf(
+                px(CL_RIGHT_X),
+                py(CL_META_Y - 10.0),
+                px(CL_RIGHT_R - 90.0),
+                py(CL_META_Y + 24.0),
+            ),
             &self.b.gray,
         );
         if f.show_power {
@@ -763,7 +1214,12 @@ impl Panel {
             self.text(
                 &power,
                 &self.f.small_right,
-                rectf(px(CL_RIGHT_R - 130.0), py(CL_META_Y - 10.0), px(CL_RIGHT_R), py(CL_META_Y + 10.0)),
+                rectf(
+                    px(CL_RIGHT_R - 130.0),
+                    py(CL_META_Y - 10.0),
+                    px(CL_RIGHT_R),
+                    py(CL_META_Y + 10.0),
+                ),
                 &self.b.white,
             );
         }
@@ -772,13 +1228,23 @@ impl Panel {
         self.text(
             &sp,
             &self.f.speed,
-            rectf(px(CL_RIGHT_X), py(CL_SPEED_Y - 16.0), px(CL_RIGHT_X + 120.0), py(CL_SPEED_Y + 16.0)),
+            rectf(
+                px(CL_RIGHT_X),
+                py(CL_SPEED_Y - 16.0),
+                px(CL_RIGHT_X + 120.0),
+                py(CL_SPEED_Y + 16.0),
+            ),
             &self.b.white,
         );
         self.text(
             "km/h",
             &self.f.small_left,
-            rectf(px(CL_RIGHT_X + 122.0), py(CL_SPEED_Y - 8.0), px(CL_RIGHT_X + 170.0), py(CL_SPEED_Y + 12.0)),
+            rectf(
+                px(CL_RIGHT_X + 122.0),
+                py(CL_SPEED_Y - 8.0),
+                px(CL_RIGHT_X + 170.0),
+                py(CL_SPEED_Y + 12.0),
+            ),
             &self.b.gray,
         );
 
@@ -823,8 +1289,14 @@ impl Panel {
                 for n in [lo_n, hi_n] {
                     let tx = x + w * n;
                     self.rt.DrawLine(
-                        Vector2 { X: tx, Y: y + h / 2.0 - tick_h / 2.0 },
-                        Vector2 { X: tx, Y: y + h / 2.0 + tick_h / 2.0 },
+                        Vector2 {
+                            X: tx,
+                            Y: y + h / 2.0 - tick_h / 2.0,
+                        },
+                        Vector2 {
+                            X: tx,
+                            Y: y + h / 2.0 + tick_h / 2.0,
+                        },
                         &self.b.scratch,
                         1.0,
                         None,
@@ -836,7 +1308,10 @@ impl Panel {
             dot.a = 1.0;
             self.b.scratch.SetColor(&dot);
             self.rt.FillRoundedRectangle(
-                &rounded(rectf(mx - h * 0.55, y - h * 0.15, mx + h * 0.55, y + h + h * 0.15), h),
+                &rounded(
+                    rectf(mx - h * 0.55, y - h * 0.15, mx + h * 0.55, y + h + h * 0.15),
+                    h,
+                ),
                 &self.b.scratch,
             );
         }
@@ -869,8 +1344,14 @@ impl Panel {
         );
         unsafe {
             self.rt.DrawLine(
-                Vector2 { X: pad, Y: head_h + 2.0 },
-                Vector2 { X: w - pad, Y: head_h + 2.0 },
+                Vector2 {
+                    X: pad,
+                    Y: head_h + 2.0,
+                },
+                Vector2 {
+                    X: w - pad,
+                    Y: head_h + 2.0,
+                },
                 &self.b.track_edge,
                 1.0,
                 None,
@@ -900,14 +1381,20 @@ impl Panel {
             unsafe {
                 self.b.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.035));
                 self.rt.FillRoundedRectangle(&outer, &self.b.scratch);
-                self.rt.DrawRoundedRectangle(&outer, &self.b.track_edge, 0.75, None);
+                self.rt
+                    .DrawRoundedRectangle(&outer, &self.b.track_edge, 0.75, None);
             }
 
             // Badge do canto
             let badge_h = (cell_h * 0.16).clamp(14.0, 20.0);
             let badge_w = (cell_w * 0.30).clamp(28.0, 44.0);
             let badge = rounded(
-                rectf(x + inner, y + inner, x + inner + badge_w, y + inner + badge_h),
+                rectf(
+                    x + inner,
+                    y + inner,
+                    x + inner + badge_w,
+                    y + inner + badge_h,
+                ),
                 badge_h / 2.0,
             );
             unsafe {
@@ -916,7 +1403,12 @@ impl Panel {
             self.text(
                 corners[i],
                 &self.f.micro,
-                rectf(x + inner, y + inner, x + inner + badge_w, y + inner + badge_h),
+                rectf(
+                    x + inner,
+                    y + inner,
+                    x + inner + badge_w,
+                    y + inner + badge_h,
+                ),
                 &self.b.gray,
             );
 
@@ -943,8 +1435,12 @@ impl Panel {
                 );
                 self.draw_tire_range(bar_x, bar_y, bar_w, bar_h, temp, min_v, max_v, accent);
 
-                let min_s = min_v.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "–".to_string());
-                let max_s = max_v.map(|v| format!("{:.0}", v)).unwrap_or_else(|| "–".to_string());
+                let min_s = min_v
+                    .map(|v| format!("{:.0}", v))
+                    .unwrap_or_else(|| "–".to_string());
+                let max_s = max_v
+                    .map(|v| format!("{:.0}", v))
+                    .unwrap_or_else(|| "–".to_string());
                 self.text(
                     &min_s,
                     &self.f.small_left,
@@ -976,30 +1472,63 @@ impl Panel {
         let r = w.min(h - head_h - foot_h) * 0.36;
         let dot_r = (r * 0.09).clamp(5.0, 9.0);
 
-        self.text("G-FORCE", &self.f.small, rectf(0.0, head_h * 0.25, w, head_h), &self.b.gray);
+        self.text(
+            "G-FORCE",
+            &self.f.small,
+            rectf(0.0, head_h * 0.25, w, head_h),
+            &self.b.gray,
+        );
+        // G sentida pelo PILOTO = reação inercial, oposta à aceleração do carro.
+        // Inverte só o lateral; o longitudinal já fica certo com o Y da tela p/ baixo.
+        let g_lat = -f.lat;
+        let g_long = f.long;
         unsafe {
-            let outer = D2D1_ELLIPSE { point: Vector2 { X: cxg, Y: cyg }, radiusX: r, radiusY: r };
+            let outer = D2D1_ELLIPSE {
+                point: Vector2 { X: cxg, Y: cyg },
+                radiusX: r,
+                radiusY: r,
+            };
             self.rt.DrawEllipse(&outer, &self.b.gray, 1.5, None);
-            let inner = D2D1_ELLIPSE { point: Vector2 { X: cxg, Y: cyg }, radiusX: r * 0.5, radiusY: r * 0.5 };
+            let inner = D2D1_ELLIPSE {
+                point: Vector2 { X: cxg, Y: cyg },
+                radiusX: r * 0.5,
+                radiusY: r * 0.5,
+            };
             self.rt.DrawEllipse(&inner, &self.b.track, 1.0, None);
-            self.rt.DrawLine(Vector2 { X: cxg - r, Y: cyg }, Vector2 { X: cxg + r, Y: cyg }, &self.b.track, 1.0, None);
-            self.rt.DrawLine(Vector2 { X: cxg, Y: cyg - r }, Vector2 { X: cxg, Y: cyg + r }, &self.b.track, 1.0, None);
+            self.rt.DrawLine(
+                Vector2 { X: cxg - r, Y: cyg },
+                Vector2 { X: cxg + r, Y: cyg },
+                &self.b.track,
+                1.0,
+                None,
+            );
+            self.rt.DrawLine(
+                Vector2 { X: cxg, Y: cyg - r },
+                Vector2 { X: cxg, Y: cyg + r },
+                &self.b.track,
+                1.0,
+                None,
+            );
+            // Virar p/ a esquerda joga o piloto p/ a direita; frear → topo; acelerar → baixo.
             let scale = r / 1.5;
-            let mut dx = f.lat * scale;
-            let mut dy = -f.long * scale;
+            let mut dx = g_lat * scale;
+            let mut dy = g_long * scale;
             let mag = (dx * dx + dy * dy).sqrt();
             if mag > r {
                 dx *= r / mag;
                 dy *= r / mag;
             }
             let dot = D2D1_ELLIPSE {
-                point: Vector2 { X: cxg + dx, Y: cyg + dy },
+                point: Vector2 {
+                    X: cxg + dx,
+                    Y: cyg + dy,
+                },
                 radiusX: dot_r,
                 radiusY: dot_r,
             };
             self.rt.FillEllipse(&dot, &self.b.white);
         }
-        let txt = format!("{:.1}g  {:.1}g", f.lat, f.long);
+        let txt = format!("{:.1}g  {:.1}g", g_lat, g_long);
         self.text(
             &txt,
             &self.f.small,
@@ -1017,7 +1546,12 @@ impl Panel {
         let chart_w = w - pad * 2.0;
         let chart_h = (chart_bot - chart_top).max(20.0);
 
-        self.text("ELEVATION", &self.f.small_left, rectf(pad, pad * 0.4, pad + w * 0.45, head_h), &self.b.gray);
+        self.text(
+            "ELEVATION",
+            &self.f.small_left,
+            rectf(pad, pad * 0.4, pad + w * 0.45, head_h),
+            &self.b.gray,
+        );
         let lap = if elev.loop_closed {
             format!("{:.2} km", elev.loop_km)
         } else if elev.lap_km > 0.0 {
@@ -1050,11 +1584,17 @@ impl Panel {
                 let first = &elev.pts[0];
                 let x0 = x_at(first.d);
                 sink.BeginFigure(
-                    Vector2 { X: x0, Y: chart_bot },
+                    Vector2 {
+                        X: x0,
+                        Y: chart_bot,
+                    },
                     D2D1_FIGURE_BEGIN_FILLED,
                 );
                 for p in &elev.pts {
-                    sink.AddLine(Vector2 { X: x_at(p.d), Y: y_at(p.y) });
+                    sink.AddLine(Vector2 {
+                        X: x_at(p.d),
+                        Y: y_at(p.y),
+                    });
                 }
                 let last = elev.pts.last().unwrap();
                 sink.AddLine(Vector2 {
@@ -1076,14 +1616,24 @@ impl Panel {
                 ];
                 let coll = self
                     .rt
-                    .CreateGradientStopCollection(&grad_stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+                    .CreateGradientStopCollection(
+                        &grad_stops,
+                        D2D1_GAMMA_2_2,
+                        D2D1_EXTEND_MODE_CLAMP,
+                    )
                     .expect("grad coll");
                 let fill = self
                     .rt
                     .CreateLinearGradientBrush(
                         &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                            startPoint: Vector2 { X: pad, Y: chart_top },
-                            endPoint: Vector2 { X: pad, Y: chart_bot },
+                            startPoint: Vector2 {
+                                X: pad,
+                                Y: chart_top,
+                            },
+                            endPoint: Vector2 {
+                                X: pad,
+                                Y: chart_bot,
+                            },
                         },
                         None,
                         &coll,
@@ -1097,8 +1647,14 @@ impl Panel {
                     let a = &elev.pts[i - 1];
                     let b = &elev.pts[i];
                     self.rt.DrawLine(
-                        Vector2 { X: x_at(a.d), Y: y_at(a.y) },
-                        Vector2 { X: x_at(b.d), Y: y_at(b.y) },
+                        Vector2 {
+                            X: x_at(a.d),
+                            Y: y_at(a.y),
+                        },
+                        Vector2 {
+                            X: x_at(b.d),
+                            Y: y_at(b.y),
+                        },
                         &self.b.scratch,
                         line_w,
                         None,
@@ -1166,7 +1722,12 @@ impl Panel {
         self.text(
             &cur,
             &self.f.speed,
-            rectf(pad, chart_top + chart_h * 0.04, pad + w * 0.38, chart_top + chart_h * 0.22),
+            rectf(
+                pad,
+                chart_top + chart_h * 0.04,
+                pad + w * 0.38,
+                chart_top + chart_h * 0.22,
+            ),
             &self.b.white,
         );
     }
@@ -1180,6 +1741,11 @@ impl Panel {
         accent: D2D1_COLOR_F,
         gear_accent: bool,
     ) -> Result<bool> {
+        if !self.enabled {
+            self.set_shown(false);
+            self.paint_key.set(0);
+            return Ok(false);
+        }
         let visible = edit || f.alpha > 0.01;
         self.set_shown(visible);
         if !visible {
@@ -1187,7 +1753,11 @@ impl Panel {
             return Ok(false);
         }
 
-        let accent_bits = THEME.get().hue.to_bits() ^ if gear_accent { 1 } else { 0 };
+        let theme = THEME.get();
+        let accent_bits = theme.hue.to_bits()
+            ^ theme.glass_alpha.to_bits().rotate_left(11)
+            ^ theme.glass_tone.to_bits().rotate_left(22)
+            ^ if gear_accent { 1 } else { 0 };
         let elev_opt = if matches!(self.kind, Kind::Elevation) {
             Some(elev)
         } else {
@@ -1215,15 +1785,28 @@ impl Panel {
         let shift = f.near && matches!(self.kind, Kind::Cluster);
         let card_shift = shift && !gear_accent;
         unsafe {
-            let full = RECT { left: 0, top: 0, right: self.size.cx, bottom: self.size.cy };
+            let full = RECT {
+                left: 0,
+                top: 0,
+                right: self.size.cx,
+                bottom: self.size.cy,
+            };
             self.dcrt.BindDC(self.memdc, &full)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
 
             if edit {
-                self.rt.SetTransform(&Matrix3x2 { M11: 1.0, M12: 0.0, M21: 0.0, M22: 1.0, M31: 0.0, M32: 0.0 });
+                self.rt.SetTransform(&Matrix3x2 {
+                    M11: 1.0,
+                    M12: 0.0,
+                    M21: 0.0,
+                    M22: 1.0,
+                    M31: 0.0,
+                    M32: 0.0,
+                });
                 self.b.scratch.SetColor(&color(0.55, 0.6, 0.7, 0.06));
-                self.rt.FillRectangle(&rectf(0.0, 0.0, sw, sh), &self.b.scratch);
+                self.rt
+                    .FillRectangle(&rectf(0.0, 0.0, sw, sh), &self.b.scratch);
             }
 
             self.rt.SetTransform(&content);
@@ -1237,7 +1820,11 @@ impl Panel {
 
             self.rt.EndDraw(None, None)?;
         }
-        let alpha = if edit { 255 } else { (layer_alpha * 255.0).round() as u8 };
+        let alpha = if edit {
+            255
+        } else {
+            (layer_alpha * 255.0).round() as u8
+        };
         present(self.hwnd, self.memdc, self.pos, self.size, alpha)?;
         Ok(true)
     }
@@ -1266,32 +1853,70 @@ struct Backdrop {
 }
 
 impl Backdrop {
-    fn new(class: PCWSTR, instance: HINSTANCE, factory: &ID2D1Factory, sw: i32, sh: i32) -> Result<Self> {
+    fn new(
+        class: PCWSTR,
+        instance: HINSTANCE,
+        factory: &ID2D1Factory,
+        sw: i32,
+        sh: i32,
+    ) -> Result<Self> {
         let hwnd = make_window(class, instance, 0, 0, sw, sh)?;
         let (memdc, bitmap) = make_dib(sw, sh)?;
         let dcrt = make_dcrt(factory)?;
         let rt: ID2D1RenderTarget = dcrt.cast()?;
         let dim = unsafe { rt.CreateSolidColorBrush(&color(0.0, 0.0, 0.0, 0.35), None)? };
         let line = unsafe { rt.CreateSolidColorBrush(&color(1.0, 1.0, 1.0, 0.12), None)? };
-        Ok(Self { hwnd, memdc, bitmap, size: SIZE { cx: sw, cy: sh }, dcrt, rt, dim, line })
+        Ok(Self {
+            hwnd,
+            memdc,
+            bitmap,
+            size: SIZE { cx: sw, cy: sh },
+            dcrt,
+            rt,
+            dim,
+            line,
+        })
     }
 
     fn draw(&self) -> Result<()> {
         let (w, h) = (self.size.cx as f32, self.size.cy as f32);
         unsafe {
-            let full = RECT { left: 0, top: 0, right: self.size.cx, bottom: self.size.cy };
+            let full = RECT {
+                left: 0,
+                top: 0,
+                right: self.size.cx,
+                bottom: self.size.cy,
+            };
             self.dcrt.BindDC(self.memdc, &full)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
             self.rt.FillRectangle(&rectf(0.0, 0.0, w, h), &self.dim);
             let mut x = 0;
             while x <= self.size.cx {
-                self.rt.DrawLine(Vector2 { X: x as f32, Y: 0.0 }, Vector2 { X: x as f32, Y: h }, &self.line, 1.0, None);
+                self.rt.DrawLine(
+                    Vector2 {
+                        X: x as f32,
+                        Y: 0.0,
+                    },
+                    Vector2 { X: x as f32, Y: h },
+                    &self.line,
+                    1.0,
+                    None,
+                );
                 x += GRID;
             }
             let mut y = 0;
             while y <= self.size.cy {
-                self.rt.DrawLine(Vector2 { X: 0.0, Y: y as f32 }, Vector2 { X: w, Y: y as f32 }, &self.line, 1.0, None);
+                self.rt.DrawLine(
+                    Vector2 {
+                        X: 0.0,
+                        Y: y as f32,
+                    },
+                    Vector2 { X: w, Y: y as f32 },
+                    &self.line,
+                    1.0,
+                    None,
+                );
                 y += GRID;
             }
             self.rt.EndDraw(None, None)?;
@@ -1335,22 +1960,37 @@ struct Toolbar {
     bg: ID2D1SolidColorBrush,
     edge: ID2D1SolidColorBrush,
     text_brush: ID2D1SolidColorBrush,
+    muted_brush: ID2D1SolidColorBrush,
     scratch: ID2D1SolidColorBrush,
-    font: IDWriteTextFormat,
+    font_button: IDWriteTextFormat,
+    font_label: IDWriteTextFormat,
+    font_caption: IDWriteTextFormat,
 }
 
 impl Toolbar {
-    fn new(class: PCWSTR, instance: HINSTANCE, factory: &ID2D1Factory, fonts: &Fonts, sw: i32) -> Result<Self> {
-        let pos = POINT { x: (sw - TB_W) / 2, y: 24 };
+    fn new(
+        class: PCWSTR,
+        instance: HINSTANCE,
+        factory: &ID2D1Factory,
+        fonts: &Fonts,
+        sw: i32,
+    ) -> Result<Self> {
+        let pos = POINT {
+            x: (sw - TB_W) / 2,
+            y: 24,
+        };
         let size = SIZE { cx: TB_W, cy: TB_H };
         let hwnd = make_window(class, instance, pos.x, pos.y, size.cx, size.cy)?;
         set_interactive(hwnd, true);
         let (memdc, bitmap) = make_dib(size.cx, size.cy)?;
         let dcrt = make_dcrt(factory)?;
         let rt: ID2D1RenderTarget = dcrt.cast()?;
-        let bg = unsafe { rt.CreateSolidColorBrush(&color(0.055, 0.065, 0.085, 0.82), None)? };
-        let edge = unsafe { rt.CreateSolidColorBrush(&color(1.0, 1.0, 1.0, 0.18), None)? };
+        unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE) };
+        let bg = unsafe { rt.CreateSolidColorBrush(&color(0.048, 0.055, 0.071, 0.90), None)? };
+        let edge = unsafe { rt.CreateSolidColorBrush(&color(1.0, 1.0, 1.0, 0.16), None)? };
         let text_brush = unsafe { rt.CreateSolidColorBrush(&C_WHITE, None)? };
+        let muted_brush =
+            unsafe { rt.CreateSolidColorBrush(&color(0.70, 0.74, 0.80, 0.82), None)? };
         let scratch = unsafe { rt.CreateSolidColorBrush(&C_WHITE, None)? };
         unsafe {
             let _ = ShowWindow(hwnd, SW_HIDE);
@@ -1366,62 +2006,393 @@ impl Toolbar {
             bg,
             edge,
             text_brush,
+            muted_brush,
             scratch,
-            font: fonts.small.clone(),
+            font_button: fonts.toolbar_button.clone(),
+            font_label: fonts.toolbar_label.clone(),
+            font_caption: fonts.toolbar_caption.clone(),
         })
     }
 
-    fn text(&self, s: &str, r: D2D_RECT_F) {
+    fn text(&self, s: &str, fmt: &IDWriteTextFormat, r: D2D_RECT_F, brush: &ID2D1SolidColorBrush) {
         let wide: Vec<u16> = s.encode_utf16().collect();
         unsafe {
-            self.rt.DrawText(&wide, &self.font, &r, &self.text_brush, D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
+            self.rt.DrawText(
+                &wide,
+                fmt,
+                &r,
+                brush,
+                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                DWRITE_MEASURING_MODE_NATURAL,
+            );
         }
     }
 
     fn draw(&self) -> Result<()> {
         let t = THEME.get();
+        let visible = PANEL_VISIBLE.get();
+        let hover = toolbar_hover_hit(self.hwnd);
+        let down = TOOLBAR_DOWN.with(|v| v.get());
         unsafe {
-            let full = RECT { left: 0, top: 0, right: self.size.cx, bottom: self.size.cy };
+            let full = RECT {
+                left: 0,
+                top: 0,
+                right: self.size.cx,
+                bottom: self.size.cy,
+            };
             self.dcrt.BindDC(self.memdc, &full)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
 
-            let card = rounded(rectf(0.75, 0.75, self.size.cx as f32 - 0.75, self.size.cy as f32 - 0.75), 14.0);
+            let card = rounded(
+                rectf(
+                    0.75,
+                    0.75,
+                    self.size.cx as f32 - 0.75,
+                    self.size.cy as f32 - 0.75,
+                ),
+                8.0,
+            );
             self.rt.FillRoundedRectangle(&card, &self.bg);
             self.rt.DrawRoundedRectangle(&card, &self.edge, 1.0, None);
 
+            self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.05));
+            self.rt.FillRoundedRectangle(
+                &rounded(rectf(2.0, 2.0, self.size.cx as f32 - 2.0, 28.0), 7.0),
+                &self.scratch,
+            );
+            self.text(
+                "EDITAR HUD",
+                &self.font_caption,
+                rectf(TB_PAD as f32, 4.0, 140.0, 28.0),
+                &self.muted_brush,
+            );
+            self.text(
+                "COR",
+                &self.font_label,
+                rectf(
+                    TB_PAD as f32,
+                    TB_SWATCH_Y as f32,
+                    TB_COLOR_X as f32,
+                    (TB_SWATCH_Y + TB_SW) as f32,
+                ),
+                &self.muted_brush,
+            );
+
             for (i, hue) in SWATCHES.iter().enumerate() {
+                let hit = HIT_SWATCH_BASE + i as i32;
+                let pressed = down == hit && hover == hit;
+                let offset = if pressed { 1.0 } else { 0.0 };
                 let (l, tt, r, b) = swatch_rect(i);
-                let swatch = rounded(rectf(l as f32, tt as f32, r as f32, b as f32), 7.0);
+                let swatch = rounded(
+                    rectf(
+                        l as f32 + offset,
+                        tt as f32 + offset,
+                        r as f32 + offset,
+                        b as f32 + offset,
+                    ),
+                    6.0,
+                );
                 self.scratch.SetColor(&hue_color(*hue));
                 self.rt.FillRoundedRectangle(&swatch, &self.scratch);
+                if hover == hit {
+                    self.scratch
+                        .SetColor(&color(1.0, 1.0, 1.0, if pressed { 0.20 } else { 0.11 }));
+                    self.rt.FillRoundedRectangle(&swatch, &self.scratch);
+                }
                 if (t.hue - *hue).abs() < 0.5 {
                     self.scratch.SetColor(&C_WHITE);
-                    self.rt.DrawRoundedRectangle(&swatch, &self.scratch, 2.0, None);
+                    self.rt
+                        .DrawRoundedRectangle(&swatch, &self.scratch, 2.0, None);
                 } else {
                     self.rt.DrawRoundedRectangle(&swatch, &self.edge, 1.0, None);
                 }
             }
 
-            let toggle = rounded(
-                rectf(
-                    TB_TOGGLE_X as f32,
-                    TB_SWATCH_Y as f32,
-                    (TB_TOGGLE_X + TB_TOGGLE_W) as f32,
-                    (TB_SWATCH_Y + TB_SW) as f32,
-                ),
-                8.0,
-            );
+            let (tl, tt, tr, tb) = target_rect();
+            let toggle = rounded(rectf(tl as f32, tt as f32, tr as f32, tb as f32), 7.0);
             let mut accent = hue_color(t.hue);
-            accent.a = 0.24;
-            self.scratch.SetColor(&accent);
+            accent.a = 0.20;
+            self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.055));
             self.rt.FillRoundedRectangle(&toggle, &self.scratch);
-            self.scratch.SetColor(&hue_color(t.hue));
-            self.rt.DrawRoundedRectangle(&toggle, &self.scratch, 1.8, None);
-            self.text(
-                if t.gear_target { "GEAR" } else { "CARD" },
-                rectf(TB_TOGGLE_X as f32, TB_SWATCH_Y as f32 + 5.0, (TB_TOGGLE_X + TB_TOGGLE_W) as f32, (TB_SWATCH_Y + TB_SW) as f32),
+            self.rt.DrawRoundedRectangle(&toggle, &self.edge, 1.0, None);
+
+            if hover == HIT_TARGET_CARD || hover == HIT_TARGET_GEAR {
+                let hover_l = if hover == HIT_TARGET_GEAR {
+                    TB_TARGET_X + TB_TARGET_SEG_W
+                } else {
+                    TB_TARGET_X
+                };
+                let pressed = down == hover;
+                self.scratch
+                    .SetColor(&color(1.0, 1.0, 1.0, if pressed { 0.10 } else { 0.065 }));
+                self.rt.FillRoundedRectangle(
+                    &rounded(
+                        rectf(
+                            hover_l as f32 + 2.0,
+                            TB_TARGET_Y as f32 + 2.0,
+                            (hover_l + TB_TARGET_SEG_W) as f32 - 2.0,
+                            (TB_TARGET_Y + TB_TARGET_H) as f32 - 2.0,
+                        ),
+                        5.0,
+                    ),
+                    &self.scratch,
+                );
+            }
+
+            let active_l = if t.gear_target {
+                TB_TARGET_X + TB_TARGET_SEG_W
+            } else {
+                TB_TARGET_X
+            };
+            let active_hit = if t.gear_target {
+                HIT_TARGET_GEAR
+            } else {
+                HIT_TARGET_CARD
+            };
+            let active = rounded(
+                rectf(
+                    active_l as f32 + 2.0,
+                    TB_TARGET_Y as f32 + 2.0,
+                    (active_l + TB_TARGET_SEG_W) as f32 - 2.0,
+                    (TB_TARGET_Y + TB_TARGET_H) as f32 - 2.0,
+                ),
+                5.0,
             );
+            accent.a = if down == active_hit && hover == active_hit {
+                0.34
+            } else if hover == active_hit {
+                0.27
+            } else {
+                0.20
+            };
+            self.scratch.SetColor(&accent);
+            self.rt.FillRoundedRectangle(&active, &self.scratch);
+            self.scratch.SetColor(&hue_color(t.hue));
+            self.rt
+                .DrawRoundedRectangle(&active, &self.scratch, 1.0, None);
+            self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.10));
+            self.rt.DrawLine(
+                Vector2 {
+                    X: (TB_TARGET_X + TB_TARGET_SEG_W) as f32,
+                    Y: TB_TARGET_Y as f32 + 6.0,
+                },
+                Vector2 {
+                    X: (TB_TARGET_X + TB_TARGET_SEG_W) as f32,
+                    Y: (TB_TARGET_Y + TB_TARGET_H) as f32 - 6.0,
+                },
+                &self.scratch,
+                1.0,
+                None,
+            );
+            self.text(
+                "CARD",
+                &self.font_button,
+                rectf(
+                    TB_TARGET_X as f32,
+                    TB_TARGET_Y as f32,
+                    (TB_TARGET_X + TB_TARGET_SEG_W) as f32,
+                    (TB_TARGET_Y + TB_TARGET_H) as f32,
+                ),
+                if t.gear_target {
+                    &self.muted_brush
+                } else {
+                    &self.text_brush
+                },
+            );
+            self.text(
+                "MARCHA",
+                &self.font_button,
+                rectf(
+                    (TB_TARGET_X + TB_TARGET_SEG_W) as f32,
+                    TB_TARGET_Y as f32,
+                    (TB_TARGET_X + TB_TARGET_W) as f32,
+                    (TB_TARGET_Y + TB_TARGET_H) as f32,
+                ),
+                if t.gear_target {
+                    &self.text_brush
+                } else {
+                    &self.muted_brush
+                },
+            );
+
+            self.text(
+                "CARDS",
+                &self.font_label,
+                rectf(
+                    TB_PAD as f32,
+                    TB_PANEL_Y as f32,
+                    TB_COLOR_X as f32,
+                    (TB_PANEL_Y + TB_PANEL_H) as f32,
+                ),
+                &self.muted_brush,
+            );
+            for (i, kind) in PANEL_KINDS.iter().enumerate() {
+                let on = visible[i];
+                let hit = HIT_PANEL_BASE + i as i32;
+                let hot = hover == hit;
+                let pressed = down == hit && hot;
+                let offset = if pressed { 1.0 } else { 0.0 };
+                let (l, tt, r, b) = panel_toggle_rect(i);
+                let pill = rounded(
+                    rectf(
+                        l as f32 + 0.5,
+                        tt as f32 + offset,
+                        r as f32 - 0.5,
+                        b as f32 + offset,
+                    ),
+                    7.0,
+                );
+                let mut fill = if on {
+                    let mut c = hue_color(t.hue);
+                    c.a = if pressed {
+                        0.30
+                    } else if hot {
+                        0.24
+                    } else {
+                        0.17
+                    };
+                    c
+                } else {
+                    color(
+                        1.0,
+                        1.0,
+                        1.0,
+                        if pressed {
+                            0.095
+                        } else if hot {
+                            0.075
+                        } else {
+                            0.045
+                        },
+                    )
+                };
+                self.scratch.SetColor(&fill);
+                self.rt.FillRoundedRectangle(&pill, &self.scratch);
+                if on || hot {
+                    fill = if on {
+                        hue_color(t.hue)
+                    } else {
+                        color(1.0, 1.0, 1.0, 0.28)
+                    };
+                    self.scratch.SetColor(&fill);
+                    self.rt.DrawRoundedRectangle(
+                        &pill,
+                        &self.scratch,
+                        if hot { 1.35 } else { 1.0 },
+                        None,
+                    );
+                } else {
+                    self.rt.DrawRoundedRectangle(&pill, &self.edge, 1.0, None);
+                }
+
+                if on && hot {
+                    self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.08));
+                    self.rt.FillRoundedRectangle(&pill, &self.scratch);
+                    self.scratch.SetColor(&hue_color(t.hue));
+                    self.rt
+                        .DrawRoundedRectangle(&pill, &self.scratch, 1.0, None);
+                }
+
+                self.text(
+                    kind.short_label(),
+                    &self.font_button,
+                    rectf(l as f32, tt as f32 + offset, r as f32, b as f32 + offset),
+                    if on || hot {
+                        &self.text_brush
+                    } else {
+                        &self.muted_brush
+                    },
+                );
+            }
+
+            // ---- Linha 3: vidro (opacidade + tom) ----
+            self.text(
+                "VIDRO",
+                &self.font_label,
+                rectf(
+                    TB_PAD as f32,
+                    TB_ROW3_Y as f32,
+                    TB_COLOR_X as f32,
+                    (TB_ROW3_Y + TB_SLIDER_H) as f32,
+                ),
+                &self.muted_brush,
+            );
+            let knob = |x: f32, y: f32| D2D1_ELLIPSE {
+                point: Vector2 { X: x, Y: y },
+                radiusX: 7.0,
+                radiusY: 7.0,
+            };
+            let cy = TB_ROW3_Y as f32 + TB_SLIDER_H as f32 / 2.0;
+
+            // Opacidade: trilho + preenchimento até o knob.
+            let (gal, _, gar, _) = glass_alpha_rect();
+            let ga_track = rounded(rectf(gal as f32, cy - 3.0, gar as f32, cy + 3.0), 3.0);
+            self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.10));
+            self.rt.FillRoundedRectangle(&ga_track, &self.scratch);
+            let kx = alpha_knob_x(t.glass_alpha);
+            let mut acc = hue_color(t.hue);
+            acc.a = 0.60;
+            self.scratch.SetColor(&acc);
+            self.rt.FillRoundedRectangle(
+                &rounded(rectf(gal as f32, cy - 3.0, kx, cy + 3.0), 3.0),
+                &self.scratch,
+            );
+            self.scratch.SetColor(&C_WHITE);
+            self.rt.FillEllipse(&knob(kx, cy), &self.scratch);
+            self.scratch.SetColor(&color(0.0, 0.0, 0.0, 0.35));
+            self.rt.DrawEllipse(&knob(kx, cy), &self.scratch, 1.0, None);
+
+            self.text(
+                "TOM",
+                &self.font_label,
+                rectf(
+                    TB_GT_LABEL_X as f32,
+                    TB_ROW3_Y as f32,
+                    TB_GT_X as f32,
+                    (TB_ROW3_Y + TB_SLIDER_H) as f32,
+                ),
+                &self.muted_brush,
+            );
+            // Célula "neutro" + faixa de matiz.
+            let neutral = rounded(
+                rectf(
+                    TB_GT_X as f32,
+                    cy - 3.0,
+                    (TB_GT_X + TONE_NEUTRAL_W) as f32,
+                    cy + 3.0,
+                ),
+                3.0,
+            );
+            self.scratch.SetColor(&color(0.62, 0.66, 0.72, 0.38));
+            self.rt.FillRoundedRectangle(&neutral, &self.scratch);
+            let sx = tone_strip_x() as f32;
+            let sw = (TB_GT_X + TB_GT_W) as f32 - sx;
+            const TONE_SEGS: i32 = 24;
+            for i in 0..TONE_SEGS {
+                let x0 = sx + sw * i as f32 / TONE_SEGS as f32;
+                let x1 = sx + sw * (i + 1) as f32 / TONE_SEGS as f32;
+                let h = (i as f32 + 0.5) / TONE_SEGS as f32 * 360.0;
+                self.scratch.SetColor(&hsv_color(h, 0.72, 0.85, 0.90));
+                self.rt
+                    .FillRectangle(&rectf(x0, cy - 3.0, x1, cy + 3.0), &self.scratch);
+            }
+            let tx = tone_knob_x(t.glass_tone);
+            self.scratch.SetColor(&C_WHITE);
+            self.rt.FillEllipse(&knob(tx, cy), &self.scratch);
+            if t.glass_tone >= 0.0 {
+                self.scratch.SetColor(&hsv_color(t.glass_tone, 0.72, 0.85, 1.0));
+                self.rt.FillEllipse(
+                    &D2D1_ELLIPSE {
+                        point: Vector2 { X: tx, Y: cy },
+                        radiusX: 4.5,
+                        radiusY: 4.5,
+                    },
+                    &self.scratch,
+                );
+            }
+            self.scratch.SetColor(&color(0.0, 0.0, 0.0, 0.35));
+            self.rt.DrawEllipse(&knob(tx, cy), &self.scratch, 1.0, None);
 
             self.rt.EndDraw(None, None)?;
         }
@@ -1454,20 +2425,40 @@ impl Drop for Toolbar {
 
 // ===================== persistência de layout =====================
 
-fn layout_path() -> PathBuf {
-    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base).join("forza-hud-native").join("layout.txt")
+#[derive(Clone, Copy)]
+struct LayoutEntry {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    visible: bool,
 }
 
-/// "key=x,y,w,h" por linha.
-fn load_layout() -> HashMap<String, (i32, i32, i32, i32)> {
+fn layout_path() -> PathBuf {
+    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    PathBuf::from(base)
+        .join("forza-hud-native")
+        .join("layout.txt")
+}
+
+/// "key=x,y,w,h,visible" por linha. O formato antigo sem `visible` ainda carrega.
+fn load_layout() -> HashMap<String, LayoutEntry> {
     let mut map = HashMap::new();
     if let Ok(text) = fs::read_to_string(layout_path()) {
         for line in text.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let nums: Vec<i32> = v.split(',').filter_map(|n| n.trim().parse().ok()).collect();
-                if nums.len() == 4 {
-                    map.insert(k.trim().to_string(), (nums[0], nums[1], nums[2], nums[3]));
+                if nums.len() >= 4 {
+                    map.insert(
+                        k.trim().to_string(),
+                        LayoutEntry {
+                            x: nums[0],
+                            y: nums[1],
+                            w: nums[2],
+                            h: nums[3],
+                            visible: nums.get(4).copied().unwrap_or(1) != 0,
+                        },
+                    );
                 }
             }
         }
@@ -1478,7 +2469,15 @@ fn load_layout() -> HashMap<String, (i32, i32, i32, i32)> {
 fn save_layout(panels: &[Panel]) {
     let mut s = String::new();
     for p in panels {
-        s.push_str(&format!("{}={},{},{},{}\n", p.kind.key(), p.pos.x, p.pos.y, p.size.cx, p.size.cy));
+        s.push_str(&format!(
+            "{}={},{},{},{},{}\n",
+            p.kind.key(),
+            p.pos.x,
+            p.pos.y,
+            p.size.cx,
+            p.size.cy,
+            if p.enabled { 1 } else { 0 }
+        ));
     }
     let path = layout_path();
     if let Some(dir) = path.parent() {
@@ -1489,11 +2488,13 @@ fn save_layout(panels: &[Panel]) {
 
 fn theme_path() -> PathBuf {
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base).join("forza-hud-native").join("theme.txt")
+    PathBuf::from(base)
+        .join("forza-hud-native")
+        .join("theme.txt")
 }
 
 fn load_theme() -> Theme {
-    let mut t = Theme { hue: 4.0, gear_target: false };
+    let mut t = THEME_DEFAULT;
     if let Ok(text) = fs::read_to_string(theme_path()) {
         for line in text.lines() {
             if let Some((k, v)) = line.split_once('=') {
@@ -1504,6 +2505,20 @@ fn load_theme() -> Theme {
                         }
                     }
                     "target" => t.gear_target = v.trim() == "gear",
+                    "glass_alpha" => {
+                        if let Ok(a) = v.trim().parse::<f32>() {
+                            t.glass_alpha = a.clamp(GLASS_ALPHA_MIN, GLASS_ALPHA_MAX);
+                        }
+                    }
+                    "glass_tone" => {
+                        if let Ok(tone) = v.trim().parse::<f32>() {
+                            t.glass_tone = if tone < 0.0 {
+                                -1.0
+                            } else {
+                                tone.rem_euclid(360.0)
+                            };
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1514,7 +2529,13 @@ fn load_theme() -> Theme {
 
 fn save_theme() {
     let t = THEME.get();
-    let s = format!("hue={}\ntarget={}\n", t.hue, if t.gear_target { "gear" } else { "card" });
+    let s = format!(
+        "hue={}\ntarget={}\nglass_alpha={}\nglass_tone={}\n",
+        t.hue,
+        if t.gear_target { "gear" } else { "card" },
+        t.glass_alpha,
+        t.glass_tone,
+    );
     let path = theme_path();
     if let Some(dir) = path.parent() {
         let _ = fs::create_dir_all(dir);
@@ -1579,7 +2600,10 @@ unsafe fn grab_begin(hwnd: HWND) {
             win0: r,
             mouse0: m,
             move_mode: true,
-            anchor: POINT { x: r.left, y: r.top },
+            anchor: POINT {
+                x: r.left,
+                y: r.top,
+            },
             h_active: false,
             v_active: false,
             from_right: false,
@@ -1618,7 +2642,15 @@ unsafe fn grab_move(hwnd: HWND) {
     if g.move_mode {
         let nx = soft_snap(g.win0.left + (m.x - g.mouse0.x));
         let ny = soft_snap(g.win0.top + (m.y - g.mouse0.y));
-        let _ = SetWindowPos(hwnd, None, nx, ny, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            nx,
+            ny,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
         return;
     }
 
@@ -1640,8 +2672,16 @@ unsafe fn grab_move(hwnd: HWND) {
 
     let nw = (dwf * scale).round() as i32;
     let nh = (dhf * scale).round() as i32;
-    let left = if g.from_right { g.anchor.x - nw } else { g.anchor.x };
-    let top = if g.from_bottom { g.anchor.y - nh } else { g.anchor.y };
+    let left = if g.from_right {
+        g.anchor.x - nw
+    } else {
+        g.anchor.x
+    };
+    let top = if g.from_bottom {
+        g.anchor.y - nh
+    } else {
+        g.anchor.y
+    };
     let _ = SetWindowPos(hwnd, None, left, top, nw, nh, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
@@ -1650,7 +2690,12 @@ unsafe fn grab_end() {
     GRAB.set(None);
 }
 
-unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn panel_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if EDIT.load(Ordering::Relaxed) {
         match msg {
             // Tudo área-cliente: cursor + arraste/resize manuais (sem o loop modal
@@ -1703,7 +2748,12 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
     }
 }
 
-unsafe extern "system" fn backdrop_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn backdrop_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match msg {
         WM_NCHITTEST => LRESULT(HTTRANSPARENT as isize), // a malha nunca pega clique
         WM_DESTROY => {
@@ -1714,12 +2764,53 @@ unsafe extern "system" fn backdrop_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lp
     }
 }
 
-unsafe extern "system" fn toolbar_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn toolbar_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match msg {
         WM_NCHITTEST => LRESULT(HTCLIENT as isize),
         WM_LBUTTONDOWN => {
             let (x, y) = lparam_xy(lparam);
-            toolbar_click(x, y);
+            let hit = toolbar_hit(x, y);
+            TOOLBAR_DOWN.with(|v| v.set(hit));
+            if hit != HIT_NONE {
+                let _ = SetCapture(hwnd);
+            }
+            if hit == HIT_GLASS_ALPHA || hit == HIT_GLASS_TONE {
+                toolbar_slider_drag(hit, x);
+            }
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE => {
+            // Arrasto contínuo dos sliders do vidro (capture ativo).
+            let down = TOOLBAR_DOWN.with(|v| v.get());
+            if down == HIT_GLASS_ALPHA || down == HIT_GLASS_TONE {
+                let (x, _) = lparam_xy(lparam);
+                toolbar_slider_drag(down, x);
+            }
+            LRESULT(0)
+        }
+        WM_LBUTTONUP => {
+            let (x, y) = lparam_xy(lparam);
+            let hit = toolbar_hit(x, y);
+            let down = TOOLBAR_DOWN.with(|v| {
+                let down = v.get();
+                v.set(HIT_NONE);
+                down
+            });
+            let _ = ReleaseCapture();
+            if down == HIT_GLASS_ALPHA || down == HIT_GLASS_TONE {
+                save_theme();
+            } else if hit == down && hit != HIT_NONE {
+                toolbar_activate(hit);
+            }
+            LRESULT(0)
+        }
+        WM_CAPTURECHANGED => {
+            TOOLBAR_DOWN.with(|v| v.set(HIT_NONE));
             LRESULT(0)
         }
         WM_DESTROY => {
@@ -1743,13 +2834,47 @@ fn toggle_edit(panels: &mut [Panel], backdrop: &Backdrop, toolbar: &Toolbar) {
         }
         toolbar.show();
     } else {
-        for p in panels.iter_mut() {
-            sync_panel_geometry(p);
-        }
+        save_current_layout(panels);
         toolbar.hide();
         backdrop.hide();
-        save_layout(panels);
         save_theme();
+    }
+}
+
+fn sync_panel_visibility(panels: &mut [Panel]) {
+    let visible = PANEL_VISIBLE.get();
+    for p in panels.iter_mut() {
+        p.set_enabled(visible[p.kind.idx()]);
+    }
+}
+
+fn save_current_layout(panels: &mut [Panel]) {
+    sync_panel_visibility(panels);
+    for p in panels.iter_mut() {
+        sync_panel_geometry(p);
+    }
+    save_layout(panels);
+}
+
+fn hide_overlay_windows(panels: &[Panel], backdrop: &Backdrop, toolbar: &Toolbar) {
+    for p in panels {
+        p.set_shown(false);
+    }
+    toolbar.hide();
+    backdrop.hide();
+}
+
+fn toggle_hud_hidden(panels: &mut [Panel], backdrop: &Backdrop, toolbar: &Toolbar) {
+    let hide = !HUD_HIDDEN.load(Ordering::Relaxed);
+    HUD_HIDDEN.store(hide, Ordering::Relaxed);
+    if hide {
+        if EDIT.swap(false, Ordering::Relaxed) {
+            save_current_layout(panels);
+        }
+        for p in panels.iter() {
+            set_interactive(p.hwnd, false);
+        }
+        hide_overlay_windows(panels, backdrop, toolbar);
     }
 }
 
@@ -1757,7 +2882,10 @@ fn toggle_edit(panels: &mut [Panel], backdrop: &Backdrop, toolbar: &Toolbar) {
 /// e recria o DIB se o tamanho mudou.
 fn sync_panel_geometry(p: &mut Panel) {
     let r = window_rect(p.hwnd);
-    p.pos = POINT { x: r.left, y: r.top };
+    p.pos = POINT {
+        x: r.left,
+        y: r.top,
+    };
     let (nw, nh) = (r.right - r.left, r.bottom - r.top);
     if nw != p.size.cx || nh != p.size.cy {
         let _ = p.resize_dib(nw, nh);
@@ -1802,13 +2930,26 @@ pub fn run() -> Result<()> {
         let fonts = make_fonts()?;
         let saved = load_layout();
         THEME.set(load_theme());
+        let mut panel_visible = [true; PANEL_COUNT];
+        for kind in PANEL_KINDS {
+            if let Some(entry) = saved.get(kind.key()) {
+                panel_visible[kind.idx()] = entry.visible;
+            }
+        }
+        PANEL_VISIBLE.set(panel_visible);
 
         let mut panels: Vec<Panel> = Vec::new();
-        for kind in [Kind::Cluster, Kind::Tires, Kind::GForce, Kind::Elevation] {
+        for kind in PANEL_KINDS {
             let (dw, dh) = kind.size();
-            let (x, y, w, h) = saved.get(kind.key()).copied().unwrap_or_else(|| {
+            let entry = saved.get(kind.key()).copied().unwrap_or_else(|| {
                 let (dx, dy) = kind.default_pos(sw, sh);
-                (dx, dy, dw, dh)
+                LayoutEntry {
+                    x: dx,
+                    y: dy,
+                    w: dw,
+                    h: dh,
+                    visible: true,
+                }
             });
             panels.push(Panel::new(
                 kind,
@@ -1816,8 +2957,9 @@ pub fn run() -> Result<()> {
                 instance,
                 &factory,
                 &fonts,
-                (x, y),
-                (w.max(MIN_SZ), h.max(MIN_SZ)),
+                (entry.x, entry.y),
+                (entry.w.max(MIN_SZ), entry.h.max(MIN_SZ)),
+                panel_visible[kind.idx()],
             )?);
         }
         let backdrop = Backdrop::new(backdrop_class, instance, &factory, sw, sh)?;
@@ -1827,37 +2969,95 @@ pub fn run() -> Result<()> {
         let mut last_frame = Instant::now();
 
         let shared = Arc::new(Shared::new());
-        let port = std::env::var("FORZA_UDP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(UDP_PORT);
-        match udp::spawn(shared.clone(), port, |_| {}) {
-            Ok(_) => println!("[overlay] ouvindo UDP em 0.0.0.0:{port} | Ctrl+Alt+E editar | Ctrl+Alt+Q sair"),
+
+        // Mapeamento de pista (worldmap + live API :9877) — desligado no lançamento.
+        // Ver `forza::TRACK_MAPPING_ENABLED`.
+        let track = if TRACK_MAPPING_ENABLED {
+            let wm_path = worldmap::default_path();
+            let recorder = {
+                let mut r = WorldMapRecorder::new();
+                r.load_seed(&wm_path);
+                Arc::new(Mutex::new(r))
+            };
+            worldmap::spawn_autosave(recorder.clone(), wm_path.clone());
+            let _live = crate::forza::live_api::spawn_live_api(recorder.clone(), wm_path.clone());
+            Some((recorder, wm_path))
+        } else {
+            println!("[overlay] mapeamento de pista desligado (lançamento HUD)");
+            None
+        };
+
+        let port = std::env::var("FORZA_UDP_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(UDP_PORT);
+        let recorder_udp = track.as_ref().map(|(r, _)| r.clone());
+        match udp::spawn(shared.clone(), port, move |t| {
+            if let Some(ref rec_cb) = recorder_udp {
+                let active = visibility::is_driving(t, 0.0);
+                rec_cb.lock().unwrap().ingest(t, active);
+            }
+        }) {
+            Ok(_) => println!(
+                "[overlay] ouvindo UDP em 0.0.0.0:{port} | Ctrl+Alt+E editar | Ctrl+Alt+H ocultar | Ctrl+Alt+Q sair"
+            ),
             Err(e) => eprintln!("[overlay] falha ao abrir UDP {port}: {e}"),
         }
 
         let _ = RegisterHotKey(None, HK_QUIT, MOD_CONTROL | MOD_ALT, 0x51 /* Q */);
         let _ = RegisterHotKey(None, HK_EDIT, MOD_CONTROL | MOD_ALT, 0x45 /* E */);
+        let _ = RegisterHotKey(None, HK_HIDE, MOD_CONTROL | MOD_ALT, 0x48 /* H */);
 
         let mut msg = MSG::default();
         loop {
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
                 if msg.message == WM_QUIT {
+                    save_current_layout(&mut panels);
+                    save_theme();
+                    smoother.persist();
+                    if let Some((ref recorder, ref wm_path)) = track {
+                        // Compacta ao sair: snapshot JSON completo + trunca os logs
+                        // incrementais. Garante um boot rápido na próxima sessão.
+                        let mut g = recorder.lock().unwrap();
+                        let _ = g.compact(wm_path);
+                    }
                     let _ = UnregisterHotKey(None, HK_QUIT);
                     let _ = UnregisterHotKey(None, HK_EDIT);
+                    let _ = UnregisterHotKey(None, HK_HIDE);
                     return Ok(());
                 }
                 if msg.message == WM_HOTKEY {
                     match msg.wParam.0 as i32 {
                         HK_QUIT => {
+                            save_current_layout(&mut panels);
                             save_theme();
+                            smoother.persist();
+                            if let Some((ref recorder, ref wm_path)) = track {
+                                let g = recorder.lock().unwrap();
+                                let _ = g.save(wm_path);
+                                let _ = g.save_path(wm_path);
+                            }
                             let _ = UnregisterHotKey(None, HK_QUIT);
                             let _ = UnregisterHotKey(None, HK_EDIT);
+                            let _ = UnregisterHotKey(None, HK_HIDE);
                             return Ok(());
                         }
-                        HK_EDIT => toggle_edit(&mut panels, &backdrop, &toolbar),
+                        HK_EDIT => {
+                            HUD_HIDDEN.store(false, Ordering::Relaxed);
+                            toggle_edit(&mut panels, &backdrop, &toolbar);
+                        }
+                        HK_HIDE => toggle_hud_hidden(&mut panels, &backdrop, &toolbar),
                         _ => {}
                     }
                 }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
+            }
+
+            if HUD_HIDDEN.load(Ordering::Relaxed) {
+                hide_overlay_windows(&panels, &backdrop, &toolbar);
+                thread::sleep(Duration::from_millis(IDLE_SLEEP_MS));
+                continue;
             }
 
             let snap = shared.latest();
@@ -1867,6 +3067,9 @@ pub fn run() -> Result<()> {
             let fd = smoother.tick(&snap, edit).clone();
             let elev = smoother.elevation();
             let mut presented = false;
+            if edit {
+                sync_panel_visibility(&mut panels);
+            }
             for p in panels.iter_mut() {
                 if edit {
                     sync_panel_geometry(p);

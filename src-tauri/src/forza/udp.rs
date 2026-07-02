@@ -1,7 +1,6 @@
 //! Thread dedicada de recepção UDP. Independente da camada de apresentação:
-//! armazena o snapshot e chama um callback opcional. A app Tauri passa um
-//! callback que emite evento; o overlay nativo passa um no-op e lê o snapshot
-//! direto no loop de render.
+//! armazena o snapshot e chama um callback opcional (o gravador do worldmap,
+//! quando ligado). O overlay lê o snapshot direto no loop de render.
 
 use std::net::UdpSocket;
 use std::sync::Arc;
@@ -11,7 +10,11 @@ use super::packet;
 use super::payload::{self, Telemetry};
 use super::state::Shared;
 
-pub fn spawn<F>(shared: Arc<Shared>, port: u16, on_packet: F) -> std::io::Result<thread::JoinHandle<()>>
+pub fn spawn<F>(
+    shared: Arc<Shared>,
+    port: u16,
+    on_packet: F,
+) -> std::io::Result<thread::JoinHandle<()>>
 where
     F: Fn(&Telemetry) + Send + 'static,
 {

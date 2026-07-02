@@ -1,6 +1,5 @@
-//! Telemetria derivada, serializável para a webview.
-//! Subconjunto da Fase 1 (fatia vertical) — nomes de campo compatíveis com o
-//! payload de `backend/payload.py` para reaproveitar o front Solid na Fase 2.
+//! Telemetria derivada do pacote Forza. Nomes de campo compatíveis com o
+//! `backend/payload.py` original (porta do parser Python).
 
 use serde::Serialize;
 
@@ -58,6 +57,13 @@ pub struct Telemetry {
     /// Posição mundial [x, y, z] em metros (dash-only). `y` = elevação.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pos: Option<[f32; 3]>,
+    /// Vibração da superfície por roda [FL, FR, RL, RR] — base p/ inferir o tipo
+    /// de terreno/via no mapa do mundo (~0 asfalto, alto terra/grama).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surf_rumble: Option<[f32; 4]>,
+    /// Profundidade de poça/água por roda [FL, FR, RL, RR] — classe Água do mapa.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub puddle: Option<[f32; 4]>,
 
     /// Contador monotônico de pacotes — dedupe/diagnóstico no front.
     pub _pkt: u64,
@@ -104,6 +110,8 @@ pub fn build(p: &Packet) -> Telemetry {
         t.fuel = Some(p.fuel() * 100.0);
         t.tires = Some(p.tire_temps());
         t.pos = Some(p.pos());
+        t.surf_rumble = Some(p.surface_rumble());
+        t.puddle = Some(p.wheel_in_puddle());
         let power_w = p.power();
         if power_w.is_finite() && power_w >= 0.0 {
             t.power_hp = Some(power_w / catalog::WATTS_PER_CV);

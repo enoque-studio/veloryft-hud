@@ -9,7 +9,7 @@ Veloryft são **dois produtos pagos** distribuídos em **quatro repositórios**:
 
 | Repositório | Papel | Stack |
 |---|---|---|
-| **veloryft-hud** | Cliente desktop: captura telemetria do Forza e exibe o HUD | Rust + Tauri + Direct2D |
+| **veloryft-hud** | Cliente desktop: captura telemetria do Forza e exibe o HUD | Rust + Direct2D |
 | veloryft-back | API monolítica; **único** tier com acesso ao banco | Rust + axum |
 | veloryft-front | Plataforma web: ranking, voltas, pistas, perfis | SolidJS + Vite |
 | veloryft-db | Schema e migrations do banco | PostgreSQL + TimescaleDB |
@@ -36,19 +36,25 @@ responsabilidade, o front nunca toca o banco (back-to-back / DMZ), licença
    por fingerprint de hardware e heartbeat online; só envia telemetria com token
    de sessão válido.
 
-## Decisão de render: tudo em Direct2D (inclusive a Fase 2)
+## Decisão de render: Direct2D nativo (HUD in-game)
 
-O foco é **performance sem perder o design**. A UI rica de 8 painéis (Fase 2) será
-desenhada em **Direct2D nativo** — a mesma pipeline do overlay atual (DIB
-premultiplicado + `UpdateLayeredWindow`), e **não** em WebView2.
+O HUD in-game é o **binário padrão** (`main.rs` → `render.rs`): overlay Direct2D
+com `WS_EX_LAYERED | WS_EX_TRANSPARENT` e `UpdateLayeredWindow`. **Não** usa
+WebView2/Tauri.
 
-Motivo: a janela transparente do WebView2 passa pelo *redirection bitmap* e o DWM
-mescla a camada alpha a cada frame, gerando judder que nenhum ajuste de CSS/rAF
-resolve. Direct2D dá composição GPU com alpha por pixel, RAM mínima e o controle
-visual (gradiente, cantos, anti-alias) para manter a beleza.
+Telas **fora do jogo** (configuração, login/licença) ainda não existem; quando
+forem necessárias, entram como camada própria — fora do caminho de render in-game.
 
-O app **Tauri/WebView2** fica restrito a janelas **fora do jogo** (configuração,
-login/licença), nunca no caminho de render in-game.
+## Lançamento inicial — mapeamento de pista desligado
+
+O escopo imediato é o **HUD in-game** (overlay Direct2D). A telemetria de
+**mapeamento de pista** — `WorldMapRecorder`, live API local (`:9877`), autosave
+do heightmap e upload para o `veloryft-back` — está **desligada** até a
+plataforma estar pronta para a galera.
+
+Controle: `TRACK_MAPPING_ENABLED` em `src-tauri/src/forza/mod.rs` (hoje `false`).
+Com desligado, o overlay não sobe a live API nem grava células de pista; a captura
+UDP e os painéis do HUD continuam normais.
 
 ## Fronteiras
 

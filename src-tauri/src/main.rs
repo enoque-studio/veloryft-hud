@@ -1,6 +1,17 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+//! HUD in-game: overlay nativo Direct2D (`render.rs`). Binário único do crate.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    forza_hud_native_lib::run()
+    #[cfg(windows)]
+    {
+        if let Err(e) = forza_hud_native_lib::render::run() {
+            eprintln!("[overlay] erro: {e:?}");
+            std::process::exit(1);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("HUD overlay nativo só é suportado no Windows");
+        std::process::exit(1);
+    }
 }

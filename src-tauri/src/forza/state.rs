@@ -1,6 +1,6 @@
 //! Snapshot compartilhado e lock-free do último pacote.
-//! `ArcSwap` permite leitura sem bloqueio (futuro renderer nativo / comando
-//! Tauri de fallback) enquanto a thread UDP troca o ponteiro a cada pacote.
+//! `ArcSwap` permite o loop de render ler sem bloqueio enquanto a thread UDP
+//! troca o ponteiro a cada pacote.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

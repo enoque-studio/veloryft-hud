@@ -1,34 +1,31 @@
 [package]
 name = "forza-hud-native"
 version = "0.1.0"
-description = "A Tauri App"
+description = "HUD de telemetria do Forza — overlay nativo Direct2D (Windows)"
 authors = ["you"]
 edition = "2021"
+
+# Binário único: `forza-hud-native` (main.rs) = overlay Direct2D in-game.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# O sufixo `_lib` evita conflito de nome entre a lib e o binário no Windows.
+# Ver https://github.com/rust-lang/cargo/issues/8519
 name = "forza_hud_native_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
+crate-type = ["rlib"]
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arc-swap = "1"
+tiny_http = "0.12"
 
 # Contrato compartilhado com o veloryft-back (DTOs de rede). Path dep: exige os
 # repos lado a lado. Futuro: mover veloryft-core p/ repo próprio ou git dep.
 veloryft-core = { path = "../../veloryft-back/crates/core" }
 
-# Overlay nativo (binário `overlay`): Direct2D + DirectComposition + win32.
+# Overlay nativo: Direct2D + win32 (janela layered, click-through).
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
 features = [
@@ -51,4 +48,3 @@ features = [
 
 [target.'cfg(windows)'.dependencies.windows-numerics]
 version = "0.2"
-

@@ -1,23 +1,18 @@
-//! Suavização, aprendizado de redline e visibilidade do HUD — fonte única usada
-//! pelo overlay Direct2D e pela webview Tauri (sem duplicar lógica no front).
+//! Suavização e visibilidade do HUD — fonte única consumida pelo overlay Direct2D.
 
 use std::time::Instant;
 
-use serde::Serialize;
-
 use super::elevation::{ElevationProfile, ElevationTracker};
 use super::payload::{self, Telemetry};
+use super::revlimit::RevLimitTracker;
 use super::tires::{TireRange, TireTracker};
 use super::visibility;
 
 pub const TAU_BAR: f32 = 0.032;
 pub const TAU_TEXT: f32 = 0.11;
-pub const TAU_FADE: f32 = 0.07;
-pub const SHIFT_AT: f32 = 0.92;
-const LEARN_MIN_THROTTLE: f32 = 90.0;
-const LEARN_MIN_OVER_IDLE: f32 = 2200.0;
-const LEARN_MIN_REPORTED_FRAC: f32 = 0.45;
-const LEARN_SUSPICIOUS_REPORTED_FRAC: f32 = 0.88;
+pub const TAU_FADE_IN: f32 = 0.07;
+/// Fade-out mais rápido — menu/cinemática some 100% sem demora.
+pub const TAU_FADE_OUT: f32 = 0.035;
 
 const ANIM_RPM: f32 = 0.0005;
 const ANIM_PEDAL: f32 = 0.0005;
@@ -25,10 +20,16 @@ const ANIM_SPEED: f32 = 0.05;
 const ANIM_G: f32 = 0.002;
 const ANIM_ALPHA: f32 = 0.005;
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct DisplayFrame {
     pub rpm_frac: f32,
     pub near: bool,
+    /// Ponto de troca recomendado (fração de max_rpm) — aprendido por carro.
+    pub shift_frac: f32,
+    /// Corte do limitador (fração de max_rpm; 1.0 enquanto desconhecido).
+    pub limit_frac: f32,
+    /// O corte deste carro já foi observado (platô a todo gás).
+    pub limit_known: bool,
     pub gear: Option<u8>,
     pub speed: f32,
     pub accel: f32,
@@ -46,10 +47,6 @@ pub struct DisplayFrame {
     pub alpha: f32,
     /// Ainda interpolando — o render deve continuar desenhando.
     pub animating: bool,
-    /// Diagnóstico para a webview (status bar).
-    pub fmt: String,
-    pub rpm_raw: u32,
-    pub pkt: u64,
     /// Elevação atual (m), suavizada.
     pub elev_m: f32,
     pub elev_min: f32,
@@ -97,16 +94,12 @@ pub struct DisplaySmoother {
     last_pkt: u64,
     last_change: Instant,
     last_frame: Instant,
-    sticky_max_rpm: f32,
-    observed_peak_rpm: f32,
-    learned_max_rpm: f32,
-    last_raw_rpm: f32,
-    last_gear: Option<u8>,
     car_sig: u64,
     d_visible: f32,
     d_elev: f32,
     elevation: ElevationTracker,
     tires: TireTracker,
+    revlimit: RevLimitTracker,
 }
 
 impl DisplaySmoother {
@@ -125,17 +118,18 @@ impl DisplaySmoother {
             last_pkt: 0,
             last_change: now,
             last_frame: now,
-            sticky_max_rpm: 0.0,
-            observed_peak_rpm: 0.0,
-            learned_max_rpm: 0.0,
-            last_raw_rpm: 0.0,
-            last_gear: None,
             car_sig: 0,
             d_visible: 0.0,
             d_elev: 0.0,
             elevation: ElevationTracker::new(),
             tires: TireTracker::new(),
+            revlimit: RevLimitTracker::with_persistence(RevLimitTracker::default_path()),
         }
+    }
+
+    /// Grava o aprendizado de limite de giro pendente (chamar ao sair).
+    pub fn persist(&mut self) {
+        self.revlimit.save_now();
     }
 
     pub fn elevation(&self) -> ElevationProfile {
@@ -169,56 +163,12 @@ impl DisplaySmoother {
         self.d_slip = slip;
     }
 
-    fn effective_max_rpm(&self) -> f32 {
-        if self.learned_max_rpm > 100.0 {
-            self.learned_max_rpm
+    fn target_rpm_frac(snap: &Telemetry, fresh: bool) -> f32 {
+        if fresh && snap.max_rpm > 100.0 {
+            (snap.rpm / snap.max_rpm).clamp(0.0, 1.0)
         } else {
-            self.sticky_max_rpm
+            0.0
         }
-    }
-
-    fn reset_car_learning(&mut self, rpm: f32, gear: Option<u8>) {
-        self.observed_peak_rpm = rpm.max(0.0);
-        self.learned_max_rpm = 0.0;
-        self.last_raw_rpm = rpm.max(0.0);
-        self.last_gear = gear;
-    }
-
-    fn commit_observed_peak(&mut self, idle_rpm: f32) {
-        let peak = self.observed_peak_rpm;
-        let reported = self.sticky_max_rpm;
-        if peak <= idle_rpm + LEARN_MIN_OVER_IDLE || reported <= 100.0 {
-            return;
-        }
-        let frac = peak / reported;
-        let looks_like_low_rev_car =
-            frac >= LEARN_MIN_REPORTED_FRAC && frac < LEARN_SUSPICIOUS_REPORTED_FRAC;
-        if looks_like_low_rev_car {
-            self.learned_max_rpm = self.learned_max_rpm.max(peak / SHIFT_AT);
-        }
-    }
-
-    fn learn_effective_redline(&mut self, snap: &Telemetry, fresh: bool) {
-        if !fresh {
-            return;
-        }
-        let gear = snap.gear;
-        let accel = snap.accel.unwrap_or(0.0);
-        let rpm = snap.rpm.max(0.0);
-        let upshift = matches!(
-            (self.last_gear, gear),
-            (Some(prev), Some(next)) if next > prev && prev > 0
-        );
-
-        if upshift && accel >= LEARN_MIN_THROTTLE {
-            self.commit_observed_peak(snap.idle_rpm);
-            self.observed_peak_rpm = rpm;
-        }
-        if accel >= LEARN_MIN_THROTTLE && gear != Some(0) {
-            self.observed_peak_rpm = self.observed_peak_rpm.max(rpm);
-        }
-        self.last_raw_rpm = rpm;
-        self.last_gear = gear;
     }
 
     /// Avança um passo de suavização. `force_visible` mantém o HUD visível (modo edição).
@@ -226,31 +176,31 @@ impl DisplaySmoother {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
-        if snap._pkt != self.last_pkt {
+        let packet_changed = snap._pkt != self.last_pkt;
+        if packet_changed {
             self.last_pkt = snap._pkt;
             self.last_change = now;
         }
         let age_s = (now - self.last_change).as_secs_f32();
         let fresh = age_s < visibility::STALE_S;
-        let driving = force_visible || visibility::is_driving(snap, age_s);
+        let driving = force_visible || visibility::is_hud_visible(snap, age_s);
         let target_vis = if driving { 1.0 } else { 0.0 };
         let prev_visible = self.d_visible;
-        self.d_visible = exp_smooth(self.d_visible, target_vis, dt, TAU_FADE);
-
-        if snap.max_rpm > 100.0 {
-            self.sticky_max_rpm = snap.max_rpm;
+        let tau = if target_vis > self.d_visible {
+            TAU_FADE_IN
+        } else {
+            TAU_FADE_OUT
+        };
+        self.d_visible = exp_smooth(self.d_visible, target_vis, dt, tau);
+        if target_vis == 0.0 && self.d_visible < 0.015 {
+            self.d_visible = 0.0;
         }
+
         let sig = car_signature(snap);
         if sig != 0 && self.car_sig != 0 && sig != self.car_sig {
-            self.reset_car_learning(snap.rpm, snap.gear);
             self.elevation.reset();
             self.tires.reset();
-            let max = self.effective_max_rpm();
-            let t_rpm = if fresh && max > 0.0 {
-                (snap.rpm / max).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
+            let t_rpm = Self::target_rpm_frac(snap, fresh);
             let accel = if fresh {
                 snap.accel.unwrap_or(0.0) / 100.0
             } else {
@@ -261,7 +211,11 @@ impl DisplaySmoother {
             } else {
                 0.0
             };
-            let speed = if fresh { snap.speed.unwrap_or(0.0) } else { 0.0 };
+            let speed = if fresh {
+                snap.speed.unwrap_or(0.0)
+            } else {
+                0.0
+            };
             let lat = if fresh { snap.lat_g } else { 0.0 };
             let long = if fresh { snap.long_g } else { 0.0 };
             let slip = if fresh { snap.slip } else { [0.0; 4] };
@@ -273,19 +227,10 @@ impl DisplaySmoother {
             };
         }
         if sig != 0 {
-            if self.car_sig == 0 {
-                self.reset_car_learning(snap.rpm, snap.gear);
-            }
             self.car_sig = sig;
         }
-        self.learn_effective_redline(snap, fresh);
 
-        let max = self.effective_max_rpm();
-        let t_rpm = if fresh && max > 0.0 {
-            (snap.rpm / max).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let t_rpm = Self::target_rpm_frac(snap, fresh);
         let t_accel = if fresh {
             snap.accel.unwrap_or(0.0) / 100.0
         } else {
@@ -296,7 +241,11 @@ impl DisplaySmoother {
         } else {
             0.0
         };
-        let t_speed = if fresh { snap.speed.unwrap_or(0.0) } else { 0.0 };
+        let t_speed = if fresh {
+            snap.speed.unwrap_or(0.0)
+        } else {
+            0.0
+        };
         let t_lat = if fresh { snap.lat_g } else { 0.0 };
         let t_long = if fresh { snap.long_g } else { 0.0 };
         let t_slip = if fresh { snap.slip } else { [0.0; 4] };
@@ -311,12 +260,24 @@ impl DisplaySmoother {
         for i in 0..4 {
             self.d_slip[i] = exp_smooth(self.d_slip[i], t_slip[i], dt, TAU_BAR);
         }
-        self.d_power = exp_smooth(self.d_power, if fresh { power_target } else { 0.0 }, dt, TAU_TEXT);
+        self.d_power = exp_smooth(
+            self.d_power,
+            if fresh { power_target } else { 0.0 },
+            dt,
+            TAU_TEXT,
+        );
 
         let elev_target = snap.pos.map(|p| p[1]).unwrap_or(0.0);
         self.elevation.update(snap, driving && fresh);
         self.tires.update(snap.tires, driving && fresh);
-        self.d_elev = exp_smooth(self.d_elev, if fresh { elev_target } else { self.d_elev }, dt, TAU_TEXT);
+        self.revlimit.update(snap, driving && fresh);
+        let shift = self.revlimit.info();
+        self.d_elev = exp_smooth(
+            self.d_elev,
+            if fresh { elev_target } else { self.d_elev },
+            dt,
+            TAU_TEXT,
+        );
         let elev_prof = self.elevation.profile();
         let tire_rng = self.tires.range();
         let (tire_min, tire_max) = if tire_rng.any() {
@@ -340,7 +301,10 @@ impl DisplaySmoother {
 
         self.frame = DisplayFrame {
             rpm_frac: self.d_rpm,
-            near: self.d_rpm >= SHIFT_AT,
+            near: self.d_rpm >= shift.shift_frac,
+            shift_frac: shift.shift_frac,
+            limit_frac: shift.limit_frac,
+            limit_known: shift.limit_known,
             gear: snap.gear,
             speed: self.d_speed,
             accel: self.d_accel,
@@ -357,9 +321,6 @@ impl DisplaySmoother {
             fresh,
             alpha: self.d_visible,
             animating,
-            fmt: snap.fmt.to_string(),
-            rpm_raw: snap.rpm.round() as u32,
-            pkt: snap._pkt,
             elev_m: self.d_elev,
             elev_min: elev_prof.min,
             elev_max: elev_prof.max,
@@ -393,6 +354,9 @@ pub fn panel_paint_key(
     match kind {
         PanelKind::Cluster => {
             h = mix(h, (f.rpm_frac * 1024.0).round() as u64);
+            h = mix(h, (f.shift_frac * 1024.0).round() as u64);
+            h = mix(h, (f.limit_frac * 1024.0).round() as u64);
+            h = mix(h, if f.limit_known { 1 } else { 0 });
             h = mix(h, (f.accel * 512.0).round() as u64);
             h = mix(h, (f.brake * 512.0).round() as u64);
             h = mix(h, f.speed.round() as u64);
@@ -494,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn esconde_quando_parado_no_menu() {
+    fn esconde_no_menu() {
         let mut s = DisplaySmoother::new();
         let t = Telemetry {
             sled_only: 0,
@@ -506,6 +470,6 @@ mod tests {
             ..Default::default()
         };
         let f = s.tick(&t, false);
-        assert!(f.alpha < 0.5);
+        assert!(f.alpha < 0.05);
     }
 }

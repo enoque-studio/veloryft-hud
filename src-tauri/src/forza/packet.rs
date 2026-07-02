@@ -15,6 +15,11 @@ mod base {
     pub const ENGINE_RPM: usize = 16;
     pub const ACCEL_X: usize = 20; // campo 5 — aceleração lateral (G)
     pub const ACCEL_Z: usize = 28; // campo 7 — aceleração longitudinal (G)
+                                   // Sinais de superfície (4 rodas FL/FR/RL/RR), usados para inferir o tipo de
+                                   // terreno/via no mapa do mundo. Ficam no bloco BASE → válidos em qualquer formato.
+    pub const WHEEL_ON_RUMBLE_FL: usize = 116; // campo 29 — zebra (0/1)
+    pub const WHEEL_IN_PUDDLE_FL: usize = 132; // campo 33 — profundidade de poça/água
+    pub const SURFACE_RUMBLE_FL: usize = 148; // campo 37 — vibração da superfície
     pub const COMBINED_SLIP_FL: usize = 180; // campo 45
     pub const COMBINED_SLIP_FR: usize = 184;
     pub const COMBINED_SLIP_RL: usize = 188;
@@ -119,6 +124,30 @@ impl<'a> Packet<'a> {
             f32_at(self.buf, base::COMBINED_SLIP_RR),
         ]
     }
+
+    /// 4 valores consecutivos de f32 a partir de um offset BASE (FL, FR, RL, RR).
+    #[inline]
+    fn base_quad(&self, off: usize) -> [f32; 4] {
+        [
+            f32_at(self.buf, off),
+            f32_at(self.buf, off + 4),
+            f32_at(self.buf, off + 8),
+            f32_at(self.buf, off + 12),
+        ]
+    }
+
+    /// Vibração da superfície por roda — ~0 em asfalto liso, alto em terra/grama.
+    pub fn surface_rumble(&self) -> [f32; 4] {
+        self.base_quad(base::SURFACE_RUMBLE_FL)
+    }
+    /// Profundidade de poça/água por roda — > 0 em vaus e poças.
+    pub fn wheel_in_puddle(&self) -> [f32; 4] {
+        self.base_quad(base::WHEEL_IN_PUDDLE_FL)
+    }
+    /// Roda sobre zebra (rumble strip) por roda — pista, não terreno aberto.
+    pub fn wheel_on_rumble_strip(&self) -> [f32; 4] {
+        self.base_quad(base::WHEEL_ON_RUMBLE_FL)
+    }
     pub fn car_ordinal(&self) -> i32 {
         i32_at(self.buf, BASE_CAR_ORDINAL)
     }
@@ -206,7 +235,11 @@ fn dash_score(p: &Packet) -> i32 {
     score += if (0.0..180.0).contains(&speed) { 4 } else { -6 };
 
     let fuel = p.fuel();
-    score += if (-0.01..=1.05).contains(&fuel) { 3 } else { -4 };
+    score += if (-0.01..=1.05).contains(&fuel) {
+        3
+    } else {
+        -4
+    };
 
     score += if p.gear() <= 12 { 2 } else { -2 };
 
