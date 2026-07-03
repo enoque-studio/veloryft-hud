@@ -1,0 +1,153 @@
+﻿END USER LICENSE AGREEMENT (EULA)
+Veloryft — Free Beta Version
+
+Document version: 1.0 — July 2, 2026
+
+IMPORTANT: READ BEFORE INSTALLING OR USING.
+
+This End User License Agreement ("Agreement") is a legal agreement between you
+("User") and Veloryft ("Licensor") regarding the "Veloryft" application in its
+free beta version, including the executable program, associated files,
+documentation, and any updates (collectively, the "Software").
+
+By checking the acceptance option, installing, copying, or using the Software,
+you acknowledge that you have read, understood, and fully agree to this
+Agreement. If you do NOT agree, do not install or use the Software and cancel
+the installation.
+
+
+1. BETA NATURE OF THE SOFTWARE
+
+1.1. The Software is provided as a BETA (pre-release) version, intended for
+evaluation and testing. It is a product UNDER DEVELOPMENT that may contain
+errors ("bugs"), flaws, instabilities, unexpected behavior, and features that
+are incomplete or subject to change or removal without prior notice.
+
+1.2. The Software is provided "AS IS", without any commitment to fix defects,
+continuity, support, or future availability.
+
+1.3. You should not rely on the Software for any critical purpose.
+
+
+2. LICENSE GRANT
+
+2.1. Subject to the terms of this Agreement, the Licensor grants you a FREE,
+personal, non-exclusive, non-transferable, and REVOCABLE license to install and
+use the Software on computers you own or control, solely for personal,
+non-commercial purposes.
+
+2.2. This license does not constitute a sale. The Licensor retains all rights
+not expressly granted.
+
+
+3. RESTRICTIONS
+
+3.1. You may NOT, except to the extent permitted by mandatory law:
+   a) sell, rent, sublicense, lend, or distribute the Software for a fee;
+   b) reverse engineer, decompile, or disassemble the Software, except where
+      expressly permitted by law;
+   c) remove or alter ownership notices, trademarks, or Licensor identification;
+   d) use the Software for any unlawful purpose or in violation of third-party
+      rights.
+
+
+4. GAME TELEMETRY AND THIRD-PARTY TRADEMARK DISCLAIMER
+
+4.1. The Software ONLY READS the telemetry data that the game itself transmits
+through its official data-output feature ("Data Out" / UDP telemetry), when
+enabled by the User in the game's settings. The Software does NOT modify,
+inject code into, alter the memory of, or otherwise interfere with the game,
+and is NOT intended to provide any improper competitive advantage.
+
+4.2. "Forza", "Forza Horizon", "Forza Motorsport", "Xbox", "Microsoft", "Turn 10
+Studios", and "Playground Games" are trademarks and/or names of their
+respective owners. The Software and the Licensor are NOT affiliated with,
+sponsored by, endorsed by, or otherwise connected to Microsoft Corporation,
+Turn 10 Studios, Playground Games, or the holders of those trademarks. Any
+reference to such trademarks is purely descriptive, to indicate compatibility.
+
+4.3. Use of the Software alongside any game must comply with that game's and
+its platforms' terms of service and rules. It is the User's sole responsibility
+to ensure such use is permitted.
+
+
+5. PRIVACY AND DATA
+
+5.1. This free beta version of the Software does NOT collect, transmit, or
+share personal data with the Licensor or third parties. Telemetry data is
+processed locally, in real time, on the User's machine.
+
+5.2. The Software writes configuration and calibration files (for example,
+panel positions and learned rev limits) exclusively to the User's local folder
+(%APPDATA%\forza-hud-native). These files remain on the User's computer and can
+be removed at any time.
+
+5.3. Because this version does not collect or remotely process personal data,
+there is no transfer of data to third parties, consistent with applicable data
+protection laws (including, where applicable, Brazil's LGPD — Law No.
+13.709/2018). Should future versions collect data, the User will be informed
+and asked for prior consent.
+
+
+6. DISCLAIMER OF WARRANTIES
+
+6.1. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS
+PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING, WITHOUT LIMITATION, WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, ACCURACY, OR NON-INFRINGEMENT.
+
+6.2. The Licensor does not guarantee that the Software will run uninterrupted,
+be error-free, be compatible with any given hardware, system, or game version,
+or that any defects will be corrected.
+
+
+7. LIMITATION OF LIABILITY
+
+7.1. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR SHALL NOT BE LIABLE
+FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, NOR
+FOR LOSS OF DATA, LOST PROFITS, BUSINESS INTERRUPTION, OR DAMAGE TO EQUIPMENT,
+ARISING FROM THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+7.2. As this is free software in beta, the Licensor's total liability, under
+any theory, is limited to the maximum extent permitted by law, and use of the
+Software is at the User's sole risk.
+
+
+8. UPDATES AND DISCONTINUATION
+
+8.1. The Licensor may, at its discretion and without prior notice, release
+updates, modify, suspend, or discontinue the Software, in whole or in part.
+
+
+9. TERM AND TERMINATION
+
+9.1. This Agreement remains in effect for as long as the User uses the
+Software.
+
+9.2. The license will terminate automatically if the User breaches any clause
+of this Agreement. Upon termination, the User must stop using and uninstall the
+Software.
+
+
+10. CHANGES TO THIS AGREEMENT
+
+10.1. The Licensor may revise this Agreement in future versions of the
+Software. Continued use after new terms are made available constitutes
+acceptance.
+
+
+11. GOVERNING LAW
+
+11.1. This Agreement is governed by the laws of the User's jurisdiction of
+residence, without prejudice to any mandatory consumer-protection provisions
+that may apply.
+
+
+12. CONTACT
+
+Questions about this Agreement or the Software may be directed to Veloryft's
+official contact channel.
+
+By proceeding with installation, you confirm that you have read and agree to
+this Agreement.

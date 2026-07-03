@@ -6,12 +6,16 @@
 //! carro (`car_ordinal`):
 //!
 //! - **Corte** — platô de RPM sustentado com o acelerador cravado = limitador.
-//!   O platô só vale se o giro **subiu** até ele na mesma marcha: numa reduzida
-//!   forte a roda força o motor *acima* do corte (entra por cima, flat/caindo)
-//!   e isso não é limitador. Platôs em marcha alta podem ser limite
-//!   aerodinâmico (não de giro), então só valem abaixo de `CUT_TRUST_FRAC`
-//!   quando há marcha acima da atual. Um platô confiável bem diferente do
-//!   corte salvo o substitui (auto-correção de aprendizado ruim).
+//!   O platô só vale se o giro **subiu** até ele na mesma marcha *depois* do
+//!   blackout pós-troca: numa reduzida a rampa da embreagem varre o RPM para
+//!   cima e a roda pode forçar o motor *acima* do corte (entra por cima,
+//!   flat/caindo) — nada disso é limitador. Roda patinando (`slip` alto)
+//!   também invalida o platô: o RPM ali é regido pela tração (TCS/terra), não
+//!   pelo corte. Platôs em marcha alta podem ser limite aerodinâmico (não de
+//!   giro), então só valem abaixo de `CUT_TRUST_FRAC` quando há marcha acima
+//!   da atual. Um platô confiável bem diferente do corte salvo o substitui
+//!   (auto-correção de aprendizado ruim), mas precisa segurar
+//!   `PLATEAU_HOLD_REPLACE` — transiente curto não derruba calibração boa.
 //! - **Curva de potência + queda de RPM por troca** — potência máxima
 //!   observada por faixa de RPM e a razão `rpm_depois / rpm_antes` dos
 //!   upshifts. A troca ideal é o maior RPM em que segurar a marcha ainda
@@ -42,6 +46,12 @@ const POST_SHIFT_BLACKOUT: Duration = Duration::from_millis(400);
 const PLATEAU_BAND_FRAC: f32 = 0.008;
 /// Tempo mínimo dentro da banda para declarar limitador.
 const PLATEAU_HOLD: Duration = Duration::from_millis(250);
+/// Substituir um corte já salvo exige platô bem mais longo — a auto-correção
+/// não pode deixar um transiente de reduzida derrubar calibração boa.
+const PLATEAU_HOLD_REPLACE: Duration = Duration::from_millis(700);
+/// Slip combinado acima disto = roda patinando/travada — o RPM é regido pela
+/// tração (TCS, terra), não pelo limitador, e o platô não vale.
+const SLIP_TRUST_MAX: f32 = 1.2;
 /// Platô só vale como corte acima desta fração de max_rpm.
 const CUT_MIN_FRAC: f32 = 0.82;
 /// Acima desta fração o platô vale mesmo na marcha mais alta já vista.
@@ -50,7 +60,8 @@ const CUT_TRUST_FRAC: f32 = 0.93;
 /// platô — reduzida forte entra por cima do corte e não conta como limitador.
 const CLIMB_MIN_FRAC: f32 = 0.02;
 /// Versão do arquivo — bump descarta aprendizado de versões com bugs.
-const STORE_VERSION: u32 = 2;
+/// v3: cortes de v2 podiam ser corrompidos por platô de reduzida/patinada.
+const STORE_VERSION: u32 = 3;
 /// O aviso de troca antecede o corte por esta fração (mínimo 80 RPM).
 const SHIFT_MARGIN_FRAC: f32 = 0.015;
 /// Bins preenchidos mínimos para confiar na curva de potência.
@@ -278,9 +289,15 @@ fn learn(e: &mut CarRevData, tr: &mut Transients, snap: &Telemetry, now: Instant
         tr.gear_min_rpm = None;
         tr.reset_plateau();
     }
+    // A rampa da embreagem no blackout varre o RPM da marcha antiga para a
+    // nova — esse mínimo não é evidência de que o motor subiu livre até um
+    // platô, então o rastreio só começa depois do blackout.
+    let in_blackout = tr
+        .gear_changed_at
+        .is_some_and(|t| now.duration_since(t) < POST_SHIFT_BLACKOUT);
     if snap.rpm.is_finite() {
         tr.last_rpm = snap.rpm;
-        if snap.rpm > 0.0 {
+        if snap.rpm > 0.0 && !in_blackout {
             tr.gear_min_rpm = Some(tr.gear_min_rpm.map_or(snap.rpm, |m| m.min(snap.rpm)));
         }
     }
@@ -310,9 +327,6 @@ fn learn(e: &mut CarRevData, tr: &mut Transients, snap: &Telemetry, now: Instant
         }
     }
 
-    let in_blackout = tr
-        .gear_changed_at
-        .is_some_and(|t| now.duration_since(t) < POST_SHIFT_BLACKOUT);
     let sampling = e.max_rpm > 100.0
         && throttle >= FULL_THROTTLE
         && (1..=10).contains(&gear)
@@ -337,10 +351,16 @@ fn learn(e: &mut CarRevData, tr: &mut Transients, snap: &Telemetry, now: Instant
     }
 
     // Platô: RPM preso numa banda estreita com acelerador cravado = corte.
+    // Roda patinando não vale — ali o RPM é regido pela tração, não pelo corte.
+    if snap.slip.iter().any(|s| s.abs() > SLIP_TRUST_MAX) {
+        tr.reset_plateau();
+        return dirty;
+    }
     let band = e.max_rpm * PLATEAU_BAND_FRAC;
     match tr.plat_since {
         Some(since) if (snap.rpm - tr.plat_rpm).abs() <= band => {
-            if now.duration_since(since) >= PLATEAU_HOLD {
+            let held = now.duration_since(since);
+            if held >= PLATEAU_HOLD {
                 let frac = tr.plat_rpm / e.max_rpm;
                 let trusted = frac >= CUT_TRUST_FRAC || gear < tr.max_gear_seen;
                 // O giro subiu até aqui nesta marcha? Reduzida forte entra por
@@ -351,14 +371,18 @@ fn learn(e: &mut CarRevData, tr: &mut Transients, snap: &Telemetry, now: Instant
                 if frac >= CUT_MIN_FRAC && trusted && climbed {
                     let cut = tr.plat_rpm.min(e.max_rpm * 1.02);
                     // Perto do corte salvo: refina p/ cima (topo do bounce).
-                    // Longe dele: substitui — auto-corrige aprendizado ruim.
+                    // Longe dele: substitui — auto-corrige aprendizado ruim —
+                    // mas só com platô longo; transiente não derruba o salvo.
                     let new_cut = match e.cut_rpm {
-                        Some(old) if (old - cut).abs() <= band * 2.0 => old.max(cut),
-                        _ => cut,
+                        Some(old) if (old - cut).abs() <= band * 2.0 => Some(old.max(cut)),
+                        Some(_) if held < PLATEAU_HOLD_REPLACE => None,
+                        _ => Some(cut),
                     };
-                    if e.cut_rpm != Some(new_cut) {
-                        e.cut_rpm = Some(new_cut);
-                        dirty = true;
+                    if let Some(nc) = new_cut {
+                        if e.cut_rpm != Some(nc) {
+                            e.cut_rpm = Some(nc);
+                            dirty = true;
+                        }
                     }
                 }
             }
@@ -589,12 +613,66 @@ mod tests {
             },
         );
         let t0 = Instant::now();
-        let samples = climb_then_hold(3, 5000.0, 7800.0, 10);
+        // Substituição exige platô longo (PLATEAU_HOLD_REPLACE) — segura 1 s.
+        let samples = climb_then_hold(3, 5000.0, 7800.0, 20);
         feed(&mut tr, t0, 0, &samples);
         let cut = tr.cars.get("ord:42").unwrap().cut_rpm.unwrap();
         assert!(
             cut > 7650.0 && cut < 7900.0,
             "corte deveria cair p/ ~7800, ficou {cut}"
+        );
+    }
+
+    #[test]
+    fn rampa_de_reduzida_no_blackout_nao_conta_como_subida() {
+        let mut tr = RevLimitTracker::new();
+        let t0 = Instant::now();
+        // Acelerando em 4ª sem tirar o pé...
+        let up: Vec<Telemetry> = (0..10)
+            .map(|i| snap(5000.0 + i as f32 * 150.0, 4, 100.0))
+            .collect();
+        feed(&mut tr, t0, 0, &up);
+        // ...reduz 2 marchas: a embreagem varre o RPM p/ cima DENTRO do
+        // blackout e a roda prende o motor acima do corte por >1 s. A rampa
+        // não é subida do motor livre — não pode validar o platô.
+        let mut down: Vec<Telemetry> = [6600.0, 7200.0, 7800.0, 8100.0]
+            .iter()
+            .map(|&r| snap(r, 2, 100.0))
+            .collect();
+        down.extend((0..20).map(|_| snap(8150.0, 2, 100.0)));
+        feed(&mut tr, t0, 500, &down);
+        assert!(
+            !tr.info().limit_known,
+            "overrev de reduzida com rampa não é limitador"
+        );
+    }
+
+    #[test]
+    fn plato_patinando_nao_substitui_corte_bom() {
+        let mut tr = RevLimitTracker::new();
+        let t0 = Instant::now();
+        // Aprende o corte real (7800) numa puxada limpa em 3ª.
+        let samples = climb_then_hold(3, 5000.0, 7800.0, 10);
+        feed(&mut tr, t0, 0, &samples);
+        assert!(tr.info().limit_known);
+        // Reduz p/ 2ª e o TCS segura o giro em 7000 (87,5%) patinando: sobe
+        // DEPOIS do blackout (8 amostras = 400 ms em 6000) e fica flat por
+        // >1 s — sem o gate de slip isso substituiria o corte bom por 7000.
+        let spin: Vec<Telemetry> = std::iter::repeat(6000.0)
+            .take(8)
+            .chain([6500.0, 6800.0])
+            .chain(std::iter::repeat(7000.0).take(22))
+            .map(|r| {
+                let mut s = snap(r, 2, 100.0);
+                s.slip = [1.8, 1.8, 2.4, 2.4];
+                s
+            })
+            .collect();
+        feed(&mut tr, t0, 2000, &spin);
+        let cut = tr.cars.get("ord:42").unwrap().cut_rpm.unwrap();
+        assert!(
+            (cut - 7800.0).abs() < 100.0,
+            "patinada não deveria mexer no corte, ficou {cut}"
         );
     }
 

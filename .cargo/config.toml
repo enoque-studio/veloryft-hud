@@ -2,3 +2,8 @@
 # redes (CRYPT_E_NO_REVOCATION_CHECK). Desliga a checagem para o cargo baixar crates.
 [http]
 check-revoke = false
+
+# CRT estático: o exe roda em Windows 10/11 limpos sem precisar do VC++ Redist
+# (vcruntime140.dll). Essencial para distribuir o instalador standalone.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

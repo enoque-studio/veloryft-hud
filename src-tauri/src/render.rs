@@ -24,6 +24,7 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows_numerics::{Matrix3x2, Vector2};
 
@@ -47,8 +48,14 @@ const MAGNET: i32 = 12;
 const FRAME_MIN_MS: u64 = 16;
 const IDLE_SLEEP_MS: u64 = 50;
 
+// Ícone na bandeja do sistema (system tray).
+const WM_TRAYICON: u32 = WM_APP + 1;
+const ID_TRAY_TOGGLE: usize = 1001;
+const ID_TRAY_EXIT: usize = 1002;
+
 static EDIT: AtomicBool = AtomicBool::new(false);
 static HUD_HIDDEN: AtomicBool = AtomicBool::new(false);
+static TRAY_TOGGLE_HIDE: AtomicBool = AtomicBool::new(false);
 
 // Tema editável (thread da UI): matiz do destaque do shift, se ele colore a
 // marcha (true) ou o card (false), opacidade e tom do vidro dos cards.
@@ -751,7 +758,7 @@ fn make_window(class: PCWSTR, instance: HINSTANCE, x: i32, y: i32, w: i32, h: i3
         CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             class,
-            w!("Forza HUD"),
+            w!("Veloryft"),
             WS_POPUP,
             x,
             y,
@@ -2764,6 +2771,50 @@ unsafe extern "system" fn backdrop_proc(
     }
 }
 
+/// Codifica uma string curta como `szTip`/`szInfo` (UTF-16, terminado em nulo).
+fn wide_buf<const N: usize>(s: &str) -> [u16; N] {
+    let mut buf = [0u16; N];
+    for (i, c) in s.encode_utf16().take(N - 1).enumerate() {
+        buf[i] = c;
+    }
+    buf
+}
+
+/// Menu de contexto do ícone na bandeja (clique direito): mostrar/ocultar e sair.
+/// Os comandos só sinalizam via atomics/`PostQuitMessage` — o loop principal
+/// (dono de `panels`/`backdrop`/`toolbar`) é quem de fato aplica o efeito.
+unsafe fn show_tray_menu(hwnd: HWND) {
+    let Ok(hmenu) = CreatePopupMenu() else { return };
+    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_TOGGLE, w!("Show/Hide HUD"));
+    let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_EXIT, w!("Exit"));
+
+    let mut pt = POINT { x: 0, y: 0 };
+    let _ = GetCursorPos(&mut pt);
+    // Necessário para o menu fechar sozinho ao perder o foco (peculiaridade do Win32).
+    let _ = SetForegroundWindow(hwnd);
+    let cmd = TrackPopupMenuEx(hmenu, (TPM_RIGHTBUTTON | TPM_RETURNCMD).0, pt.x, pt.y, hwnd, None);
+    let _ = DestroyMenu(hmenu);
+
+    match cmd.0 as usize {
+        ID_TRAY_TOGGLE => TRAY_TOGGLE_HIDE.store(true, Ordering::Relaxed),
+        ID_TRAY_EXIT => PostQuitMessage(0),
+        _ => {}
+    }
+}
+
+unsafe extern "system" fn tray_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if msg == WM_TRAYICON {
+        match lparam.0 as u32 {
+            WM_RBUTTONUP | WM_CONTEXTMENU => show_tray_menu(hwnd),
+            WM_LBUTTONDBLCLK => TRAY_TOGGLE_HIDE.store(true, Ordering::Relaxed),
+            _ => {}
+        }
+        return LRESULT(0);
+    }
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
 unsafe extern "system" fn toolbar_proc(
     hwnd: HWND,
     msg: u32,
@@ -2901,6 +2952,7 @@ pub fn run() -> Result<()> {
         let panel_class = w!("ForzaPanelClass");
         let backdrop_class = w!("ForzaBackdropClass");
         let toolbar_class = w!("ForzaToolbarClass");
+        let tray_class = w!("VeloryftTrayClass");
         RegisterClassW(&WNDCLASSW {
             hInstance: instance,
             lpszClassName: panel_class,
@@ -2919,6 +2971,13 @@ pub fn run() -> Result<()> {
             hInstance: instance,
             lpszClassName: toolbar_class,
             lpfnWndProc: Some(toolbar_proc),
+            hbrBackground: HBRUSH::default(),
+            ..Default::default()
+        });
+        RegisterClassW(&WNDCLASSW {
+            hInstance: instance,
+            lpszClassName: tray_class,
+            lpfnWndProc: Some(tray_proc),
             hbrBackground: HBRUSH::default(),
             ..Default::default()
         });
@@ -3004,6 +3063,44 @@ pub fn run() -> Result<()> {
             Err(e) => eprintln!("[overlay] falha ao abrir UDP {port}: {e}"),
         }
 
+        // Ícone na bandeja do sistema: janela mensagem-only (invisível) só para
+        // receber os cliques do ícone; por padrão o Windows o coloca entre os
+        // "ícones ocultos" até o usuário fixá-lo na bandeja visível.
+        let tray_hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            tray_class,
+            w!("Veloryft"),
+            WINDOW_STYLE(0),
+            0,
+            0,
+            0,
+            0,
+            Some(HWND_MESSAGE),
+            None,
+            Some(instance),
+            None,
+        )?;
+        let tray_icon = match LoadIconW(Some(instance), PCWSTR(1_usize as *const u16)) {
+            Ok(icon) => icon,
+            Err(e) => {
+                eprintln!("[tray] LoadIconW falhou: {e:?}");
+                HICON::default()
+            }
+        };
+        let tray_nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: tray_hwnd,
+            uID: 1,
+            uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
+            uCallbackMessage: WM_TRAYICON,
+            hIcon: tray_icon,
+            szTip: wide_buf("Veloryft"),
+            ..Default::default()
+        };
+        if !Shell_NotifyIconW(NIM_ADD, &tray_nid).as_bool() {
+            eprintln!("[tray] Shell_NotifyIconW(NIM_ADD) falhou");
+        }
+
         let _ = RegisterHotKey(None, HK_QUIT, MOD_CONTROL | MOD_ALT, 0x51 /* Q */);
         let _ = RegisterHotKey(None, HK_EDIT, MOD_CONTROL | MOD_ALT, 0x45 /* E */);
         let _ = RegisterHotKey(None, HK_HIDE, MOD_CONTROL | MOD_ALT, 0x48 /* H */);
@@ -3021,6 +3118,7 @@ pub fn run() -> Result<()> {
                         let mut g = recorder.lock().unwrap();
                         let _ = g.compact(wm_path);
                     }
+                    let _ = Shell_NotifyIconW(NIM_DELETE, &tray_nid);
                     let _ = UnregisterHotKey(None, HK_QUIT);
                     let _ = UnregisterHotKey(None, HK_EDIT);
                     let _ = UnregisterHotKey(None, HK_HIDE);
@@ -3037,6 +3135,7 @@ pub fn run() -> Result<()> {
                                 let _ = g.save(wm_path);
                                 let _ = g.save_path(wm_path);
                             }
+                            let _ = Shell_NotifyIconW(NIM_DELETE, &tray_nid);
                             let _ = UnregisterHotKey(None, HK_QUIT);
                             let _ = UnregisterHotKey(None, HK_EDIT);
                             let _ = UnregisterHotKey(None, HK_HIDE);
@@ -3052,6 +3151,10 @@ pub fn run() -> Result<()> {
                 }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
+            }
+
+            if TRAY_TOGGLE_HIDE.swap(false, Ordering::Relaxed) {
+                toggle_hud_hidden(&mut panels, &backdrop, &toolbar);
             }
 
             if HUD_HIDDEN.load(Ordering::Relaxed) {
