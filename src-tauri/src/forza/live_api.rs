@@ -9,6 +9,7 @@
 //! - `POST /reset`     — zera o mapa local.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -19,16 +20,56 @@ use tiny_http::{Header, Method, Response, Server, StatusCode};
 use super::worldmap::WorldMapRecorder;
 
 pub const DEFAULT_LIVE_PORT: u16 = 9877;
+const MAX_REQUEST_BODY_BYTES: u64 = 16 * 1024;
+const MAX_DELTA_SEGMENTS: usize = 8_192;
 
-fn cors() -> Header {
-    Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).expect("cors")
+fn browser_origin(req: &tiny_http::Request) -> Option<&str> {
+    req.headers()
+        .iter()
+        .find(|header| header.field.equiv("Origin"))
+        .map(|header| header.value.as_str())
+}
+
+/// The 3D viewer is a local development tool. Do not let arbitrary websites
+/// issue state-changing requests to this loopback server from a browser.
+fn is_allowed_viewer_origin(origin: &str) -> bool {
+    matches!(origin, "http://localhost" | "http://127.0.0.1")
+        || ["http://localhost:", "http://127.0.0.1:"]
+            .iter()
+            .any(|prefix| {
+                origin
+                    .strip_prefix(prefix)
+                    .is_some_and(|port| !port.is_empty() && port.parse::<u16>().is_ok())
+            })
+}
+
+fn with_cors<R: Read>(response: Response<R>, origin: Option<&str>) -> Response<R> {
+    let Some(origin) = origin else {
+        return response;
+    };
+    response
+        .with_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], origin).expect("cors"))
+        .with_header(Header::from_bytes(&b"Vary"[..], &b"Origin"[..]).expect("vary"))
 }
 
 fn json_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(body)
         .with_status_code(StatusCode(status))
         .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
-        .with_header(cors())
+        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap())
+        .with_header(Header::from_bytes(&b"X-Content-Type-Options"[..], &b"nosniff"[..]).unwrap())
+}
+
+fn read_limited_body(req: &mut tiny_http::Request) -> Result<Vec<u8>, u16> {
+    let mut raw = Vec::with_capacity(1_024);
+    req.as_reader()
+        .take(MAX_REQUEST_BODY_BYTES + 1)
+        .read_to_end(&mut raw)
+        .map_err(|_| 400_u16)?;
+    if raw.len() > MAX_REQUEST_BODY_BYTES as usize {
+        return Err(413);
+    }
+    Ok(raw)
 }
 
 #[derive(Serialize)]
@@ -44,6 +85,7 @@ struct LiveDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RecordingBody {
     enabled: bool,
 }
@@ -51,6 +93,7 @@ struct RecordingBody {
 /// Corpo de `POST /path/delta`: o que o viewer já tem. `have` são pares
 /// `[id_segmento, nº_pontos]` (array, não objeto, p/ manter ids numéricos).
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PathDeltaReq {
     epoch: u64,
     #[serde(default)]
@@ -84,9 +127,18 @@ pub fn spawn_live_api(
             println!("[worldmap-live] API em http://{addr}/live");
 
             for mut req in server.incoming_requests() {
+                let requested_origin = browser_origin(&req).map(str::to_owned);
+                let allowed_origin = requested_origin
+                    .as_deref()
+                    .filter(|origin| is_allowed_viewer_origin(origin))
+                    .map(str::to_owned);
+                if requested_origin.is_some() && allowed_origin.is_none() {
+                    let _ = req.respond(json_response(403, r#"{"error":"origem não permitida"}"#));
+                    continue;
+                }
+
                 if req.method() == &Method::Options {
                     let res = Response::empty(StatusCode(204))
-                        .with_header(cors())
                         .with_header(
                             Header::from_bytes(
                                 &b"Access-Control-Allow-Methods"[..],
@@ -101,7 +153,7 @@ pub fn spawn_live_api(
                             )
                             .unwrap(),
                         );
-                    let _ = req.respond(res);
+                    let _ = req.respond(with_cors(res, allowed_origin.as_deref()));
                     continue;
                 }
 
@@ -127,19 +179,21 @@ pub fn spawn_live_api(
                     (&Method::Post, "/path/delta") => {
                         // Incremental: o viewer manda o que já tem; devolvemos só
                         // os pontos novos/mudados (ver WorldMapRecorder::to_path_delta).
-                        let mut raw = Vec::new();
-                        let _ = std::io::copy(&mut req.as_reader(), &mut raw);
-                        let body = String::from_utf8_lossy(&raw);
-                        match serde_json::from_str::<PathDeltaReq>(&body) {
-                            Ok(r) => {
-                                let have: HashMap<u64, usize> = r.have.into_iter().collect();
-                                let dto = rec.lock().unwrap().to_path_delta(r.epoch, &have);
-                                match serde_json::to_string(&dto) {
-                                    Ok(json) => json_response(200, &json),
-                                    Err(_) => json_response(500, r#"{"error":"serialização"}"#),
+                        match read_limited_body(&mut req) {
+                            Ok(raw) => match serde_json::from_slice::<PathDeltaReq>(&raw) {
+                                Ok(r) if r.have.len() <= MAX_DELTA_SEGMENTS => {
+                                    let have: HashMap<u64, usize> = r.have.into_iter().collect();
+                                    let dto = rec.lock().unwrap().to_path_delta(r.epoch, &have);
+                                    match serde_json::to_string(&dto) {
+                                        Ok(json) => json_response(200, &json),
+                                        Err(_) => json_response(500, r#"{"error":"serialização"}"#),
+                                    }
                                 }
-                            }
-                            Err(_) => json_response(400, r#"{"error":"JSON inválido"}"#),
+                                Ok(_) => json_response(413, r#"{"error":"muitos segmentos"}"#),
+                                Err(_) => json_response(400, r#"{"error":"JSON inválido"}"#),
+                            },
+                            Err(413) => json_response(413, r#"{"error":"corpo muito grande"}"#),
+                            Err(_) => json_response(400, r#"{"error":"corpo inválido"}"#),
                         }
                     }
                     (&Method::Get, "/live") => {
@@ -160,11 +214,8 @@ pub fn spawn_live_api(
                             Err(_) => json_response(500, r#"{"error":"serialização"}"#),
                         }
                     }
-                    (&Method::Post, "/recording") => {
-                        let mut raw = Vec::new();
-                        let _ = std::io::copy(&mut req.as_reader(), &mut raw);
-                        let body = String::from_utf8_lossy(&raw).into_owned();
-                        match serde_json::from_str::<RecordingBody>(&body) {
+                    (&Method::Post, "/recording") => match read_limited_body(&mut req) {
+                        Ok(raw) => match serde_json::from_slice::<RecordingBody>(&raw) {
                             Ok(b) => {
                                 let mut g = rec.lock().unwrap();
                                 g.set_recording(b.enabled);
@@ -177,8 +228,10 @@ pub fn spawn_live_api(
                                 json_response(200, &format!(r#"{{"recording":{}}}"#, b.enabled))
                             }
                             Err(_) => json_response(400, r#"{"error":"JSON inválido"}"#),
-                        }
-                    }
+                        },
+                        Err(413) => json_response(413, r#"{"error":"corpo muito grande"}"#),
+                        Err(_) => json_response(400, r#"{"error":"corpo inválido"}"#),
+                    },
                     (&Method::Post, "/reset") => {
                         rec.lock().unwrap().reset();
                         json_response(200, r#"{"ok":true}"#)
@@ -197,8 +250,24 @@ pub fn spawn_live_api(
                     }
                     _ => json_response(404, r#"{"error":"not found"}"#),
                 };
-                let _ = req.respond(response);
+                let _ = req.respond(with_cors(response, allowed_origin.as_deref()));
             }
         })
         .expect("thread worldmap-live-api")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_viewer_origin;
+
+    #[test]
+    fn accepts_only_loopback_viewer_origins() {
+        assert!(is_allowed_viewer_origin("http://localhost:5173"));
+        assert!(is_allowed_viewer_origin("http://127.0.0.1:4173"));
+        assert!(!is_allowed_viewer_origin("https://localhost:5173"));
+        assert!(!is_allowed_viewer_origin(
+            "http://localhost.evil.example:5173"
+        ));
+        assert!(!is_allowed_viewer_origin("https://evil.example"));
+    }
 }
