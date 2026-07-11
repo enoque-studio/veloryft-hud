@@ -46,11 +46,15 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 
-; Modern wizard look + branding.
-WizardStyle=modern
+; Native Windows light/dark mode. The installer reads the user's system
+; appearance once at startup and keeps its title bar, controls, and pages in sync.
+WizardStyle=modern dynamic windows11 hidebevels
 WizardSizePercent=120
-WizardImageFile=assets\wizard-large.bmp,assets\wizard-large@2x.bmp
-WizardSmallImageFile=assets\wizard-small.bmp,assets\wizard-small@2x.bmp
+DefaultDialogFontName=Segoe UI
+WizardImageFile=assets\wizard-large-light.bmp,assets\wizard-large-light@2x.bmp
+WizardImageFileDynamicDark=assets\wizard-large.bmp,assets\wizard-large@2x.bmp
+WizardSmallImageFile=assets\wizard-small-light.bmp,assets\wizard-small-light@2x.bmp
+WizardSmallImageFileDynamicDark=assets\wizard-small.bmp,assets\wizard-small@2x.bmp
 SetupIconFile=assets\veloryft.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -88,9 +92,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-{ Closes Veloryft (if running) before copying/removing files — the exe is
-  locked while the overlay is open. Kills both the installed name and the
-  raw build name. }
+{ Closes Veloryft before copying or removing its executable. }
+
 procedure KillRunningApp;
 var
   rc: Integer;

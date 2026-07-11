@@ -1,10 +1,10 @@
-﻿Veloryft — Beta
-Quick start guide
+﻿Veloryft Beta
+Quick Start Guide
 
 --------------------------------------------------------------------------
-1) ENABLE TELEMETRY IN THE GAME
+1) ENABLE GAME TELEMETRY
 --------------------------------------------------------------------------
-Veloryft only appears once the game is sending telemetry. In Forza:
+Veloryft appears only when the game is sending telemetry. In Forza, open:
 
    Settings  ->  HUD and Gameplay  ->  Data Out
 
@@ -12,36 +12,36 @@ Veloryft only appears once the game is sending telemetry. In Forza:
    * Data Out IP Address:   127.0.0.1
    * Data Out Port:         20066
 
-(Some titles label this menu "Telemetry Output" instead.)
+Some titles label this menu "Telemetry Output" instead.
 
 --------------------------------------------------------------------------
-2) SHORTCUTS
+2) KEYBOARD SHORTCUTS
 --------------------------------------------------------------------------
-   Ctrl + Alt + E   Edit mode — drag and reposition the panels
-   Ctrl + Alt + H   Show / hide the overlay
-   Ctrl + Alt + Q   Quit
+   Ctrl + Alt + E   Edit mode: drag and reposition panels
+   Ctrl + Alt + H   Show or hide the overlay
+   Ctrl + Alt + Q   Quit Veloryft
 
-Veloryft also runs quietly in the system tray (look in the hidden icons
-area near the clock). Right-click the tray icon for a quick menu to
-show/hide the overlay or quit; double-click toggles show/hide.
+Veloryft also runs from the system tray. Open the hidden-icons area near the
+clock, then right-click the tray icon to show or hide the overlay, or quit.
+Double-clicking the tray icon also toggles the overlay.
 
-In edit mode, a toolbar lets you adjust the accent color, the shift-light
-target, per-card visibility, and the glass opacity/tint. Everything is
-saved automatically.
+In Edit mode, the toolbar lets you adjust the accent color, shift-light
+target, card visibility, glass opacity, and tint. Changes are saved
+automatically.
 
 --------------------------------------------------------------------------
 3) HOW IT WORKS
 --------------------------------------------------------------------------
-Outside of a race (menus, pause, replays) the overlay stays hidden — that's
-expected. It appears automatically once you start driving.
+The overlay stays hidden outside an active drive, including menus, pause
+screens, and replays. It appears automatically when you begin driving.
 
-The shift-point indicator is learned per car as you drive at full throttle;
-expect it to still be calibrating during your first laps in a new car.
+The shift-point indicator learns each car as you drive at full throttle. It
+may still be calibrating during your first laps in a new car.
 
 --------------------------------------------------------------------------
-4) BETA VERSION
+4) BETA SOFTWARE
 --------------------------------------------------------------------------
-This is a beta version, provided as-is: it may contain bugs and rough
-edges. Thanks for trying Veloryft!
+This beta is provided as-is and may contain bugs or incomplete features.
+Thank you for trying Veloryft.
 
 Your settings are stored in:  %APPDATA%\forza-hud-native
