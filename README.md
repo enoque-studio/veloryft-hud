@@ -1,15 +1,25 @@
-# Forza HUD — overlay nativo (Rust)
+# Veloryft — HUD de telemetria nativo para Forza Horizon 6
 
-HUD de telemetria do Forza com **núcleo Rust** (UDP + parsing) e apresentação em
-**Direct2D nativo + layered window** — **este é o HUD in-game** (produto de
-lançamento). Faixa pequena no rodapé, click-through real (clique vai pro jogo),
-barras lisas sem o judder do WebView2.
+O **Veloryft** é um overlay de telemetria para Windows, escrito em **Rust**, que
+captura os pacotes UDP do Forza Horizon 6 e desenha um HUD in-game fluido com
+**Direct2D nativo + janela layered**. O clique atravessa o overlay e chega ao
+jogo, enquanto os painéis exibem RPM, marcha, velocidade, pedais, temperatura dos
+pneus, força G e perfil de elevação da volta.
 
-Comparado ao stack original (Electron + Python/SSE):
+> **Nota sobre nomes:** `veloryft-hud` é o nome deste repositório. O produto
+> voltado ao usuário chama-se apenas **Veloryft**.
+
+Para começar a usar ou desenvolver, leia o [guia de início rápido](docs/INICIO.md).
+A documentação completa está em [`docs/`](docs/INDEX.md).
+
+## Destaques
 
 - **Caminho de dados em Rust**, zero-copy, sem HTTP/SSE/JSON intermediário.
-- **Transporte event-driven** (sem o poll de 4 ms do SSE).
-- **Overlay nativo**: composição GPU com alpha por pixel, RAM mínima.
+- **Transporte event-driven** a partir do UDP do jogo.
+- **Overlay nativo**: composição GPU com alpha por pixel, sem o judder de WebView2.
+- **Click-through real**: o mouse passa pelo HUD e interage com o jogo.
+- **Licenciamento server-authoritative** com Ed25519, HMAC, TLS pinning, DPAPI e TPM.
+- **Build standalone**: CRT estático, sem depender do Visual C++ Redistributable.
 
 ## Por que o overlay nativo
 
@@ -57,26 +67,25 @@ O overlay valida uma licenca antes de abrir em builds de distribuicao. O
 provisionamento seguro do release, a rotacao de chaves/pins e o fluxo de
 ativacao estao em [docs/LICENCA.md](docs/LICENCA.md).
 
-## Rodar
+## Executar
 
-Pré-requisitos: Rust (msvc), Windows 11.
+Pré-requisitos: Rust (toolchain MSVC), Windows 10/11. Veja detalhes em
+[docs/INICIO.md](docs/INICIO.md).
 
 ```sh
 # HUD in-game — overlay Direct2D nativo:
 cargo run --manifest-path src-tauri/Cargo.toml
 #   sair: Ctrl+Alt+Q
 #   reposicionar painéis: Ctrl+Alt+E
-#   release: cargo run --release --manifest-path src-tauri/Cargo.toml
 ```
 
-No Forza: **Configurações → HUD/Telemetria → Data Out = Ligado**, IP `127.0.0.1`,
-porta `20066` (override com a env `FORZA_UDP_PORT`).
+No Forza Horizon 6: **Configurações → HUD/Telemetria → Data Out = Ligado**, IP
+`127.0.0.1`, porta `20066` (override com a env `FORZA_UDP_PORT`).
 
-Sem o jogo, o HUD fica oculto (sem telemetria). Ao dirigir, aparece; some
-100% em menu, pausa ou cinemática (`visibility::is_hud_visible`). Modo edição
-(**Ctrl+Alt+E**) força visibilidade para reposicionar painéis; a toolbar traz
-cor do acento, alvo do shift, visibilidade dos cards e os sliders **VIDRO**
-(opacidade) e **TOM** (neutro ou matiz do vidro) — tudo persistido.
+Sem o jogo, o HUD fica oculto. Ao dirigir, aparece; some 100% em menu, pausa ou
+cinemática. O modo de edição (**Ctrl+Alt+E**) força a exibição para reposicionar
+painéis e ajustar cores, opacidade e visibilidade — tudo persistido em
+`%APPDATA%/forza-hud-native/`.
 
 ## Limite de giro por carro (redline learning)
 
@@ -113,6 +122,23 @@ em `src-tauri/src/forza/mod.rs`).
 Motivo: o produto ainda está tomando forma; priorizamos entregar o overlay estável
 antes de expor viewer 3D, back e persistência de pistas. Para reativar, mude a
 constante para `true` e recompile.
+
+## Documentação
+
+A documentação completa do projeto está organizada em [`docs/`](docs/INDEX.md):
+
+| Documento | Conteúdo |
+|-----------|----------|
+| [INICIO.md](docs/INICIO.md) | Requisitos, instalação e primeiro run. |
+| [ARQUITETURA.md](docs/ARQUITETURA.md) | Arquitetura da plataforma Veloryft. |
+| [ESTRUTURA.md](docs/ESTRUTURA.md) | Organização de pastas e módulos. |
+| [TECNOLOGIAS.md](docs/TECNOLOGIAS.md) | Stack tecnológico e crates. |
+| [INTERFACE.md](docs/INTERFACE.md) | Guia dos painéis, atalhos e modo de edição. |
+| [DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md) | Guia do desenvolvedor. |
+| [DISTRIBUICAO.md](docs/DISTRIBUICAO.md) | Build e instalador Windows. |
+| [LICENCA.md](docs/LICENCA.md) | Provisionamento e fluxo de licenças. |
+| [SEGURANCA.md](docs/SEGURANCA.md) | Modelo de segurança e boas práticas. |
+| [REFERENCIAS.md](docs/REFERENCIAS.md) | Links e documentações úteis. |
 
 ## Notas
 
