@@ -30,6 +30,8 @@ mod config;
 mod fingerprint;
 #[cfg(windows)]
 mod state;
+#[cfg(windows)]
+mod tpm;
 
 #[cfg(windows)]
 pub use client::{authorize_startup, LicenseAccess};
