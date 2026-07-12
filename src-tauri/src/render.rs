@@ -320,11 +320,21 @@ fn panel_toggle_rect(i: usize) -> (i32, i32, i32, i32) {
 }
 
 fn glass_alpha_rect() -> (i32, i32, i32, i32) {
-    (TB_GA_X, TB_ROW3_Y, TB_GA_X + TB_GA_W, TB_ROW3_Y + TB_SLIDER_H)
+    (
+        TB_GA_X,
+        TB_ROW3_Y,
+        TB_GA_X + TB_GA_W,
+        TB_ROW3_Y + TB_SLIDER_H,
+    )
 }
 
 fn glass_tone_rect() -> (i32, i32, i32, i32) {
-    (TB_GT_X, TB_ROW3_Y, TB_GT_X + TB_GT_W, TB_ROW3_Y + TB_SLIDER_H)
+    (
+        TB_GT_X,
+        TB_ROW3_Y,
+        TB_GT_X + TB_GT_W,
+        TB_ROW3_Y + TB_SLIDER_H,
+    )
 }
 
 /// Início da faixa de matiz (depois da célula "neutro") no slider de tom.
@@ -558,7 +568,8 @@ fn make_glass_brush(
                 color: bot,
             },
         ];
-        let coll = rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
+        let coll =
+            rt.CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?;
         rt.CreateLinearGradientBrush(
             &D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
                 startPoint: Vector2 { X: 0.0, Y: 0.0 },
@@ -2388,7 +2399,8 @@ impl Toolbar {
             self.scratch.SetColor(&C_WHITE);
             self.rt.FillEllipse(&knob(tx, cy), &self.scratch);
             if t.glass_tone >= 0.0 {
-                self.scratch.SetColor(&hsv_color(t.glass_tone, 0.72, 0.85, 1.0));
+                self.scratch
+                    .SetColor(&hsv_color(t.glass_tone, 0.72, 0.85, 1.0));
                 self.rt.FillEllipse(
                     &D2D1_ELLIPSE {
                         point: Vector2 { X: tx, Y: cy },
@@ -2793,7 +2805,14 @@ unsafe fn show_tray_menu(hwnd: HWND) {
     let _ = GetCursorPos(&mut pt);
     // Necessário para o menu fechar sozinho ao perder o foco (peculiaridade do Win32).
     let _ = SetForegroundWindow(hwnd);
-    let cmd = TrackPopupMenuEx(hmenu, (TPM_RIGHTBUTTON | TPM_RETURNCMD).0, pt.x, pt.y, hwnd, None);
+    let cmd = TrackPopupMenuEx(
+        hmenu,
+        (TPM_RIGHTBUTTON | TPM_RETURNCMD).0,
+        pt.x,
+        pt.y,
+        hwnd,
+        None,
+    );
     let _ = DestroyMenu(hmenu);
 
     match cmd.0 as usize {
@@ -2803,7 +2822,12 @@ unsafe fn show_tray_menu(hwnd: HWND) {
     }
 }
 
-unsafe extern "system" fn tray_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn tray_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if msg == WM_TRAYICON {
         match lparam.0 as u32 {
             WM_RBUTTONUP | WM_CONTEXTMENU => show_tray_menu(hwnd),

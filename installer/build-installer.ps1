@@ -7,8 +7,8 @@
     3. compila o instalador com o Inno Setup (ISCC)
 
   Uso:
-    pwsh installer/build-installer.ps1              # build completo
-    pwsh installer/build-installer.ps1 -SkipBuild   # só recompila o instalador
+    pwsh installer/build-installer.ps1              # build completo (requer config de licenca)
+    pwsh installer/build-installer.ps1 -SkipBuild   # empacota exe existente (ainda valida config de licenca)
     pwsh installer/build-installer.ps1 -Assets      # regenera artes antes
 
   Saída: dist/Veloryft-Setup-<versao>-beta.exe
@@ -35,10 +35,35 @@ function Find-ISCC {
   throw "ISCC.exe (Inno Setup 6) não encontrado. Instale com: winget install --id JRSoftware.InnoSetup --source winget"
 }
 
+function Require-LicenseBuildConfiguration {
+  $required = @(
+    'VELORYFT_LICENSE_ORIGIN',
+    'VELORYFT_LICENSE_APP_HMAC_SECRET',
+    'VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS',
+    'VELORYFT_LICENSE_SPKI_PINS'
+  )
+  $missing = @(
+    $required | Where-Object {
+      [string]::IsNullOrWhiteSpace((Get-Item -Path "Env:$_" -ErrorAction SilentlyContinue).Value)
+    }
+  )
+  if ($missing.Count -gt 0) {
+    throw "configuração de licença ausente: $($missing -join ', '). Consulte docs/LICENCA.md."
+  }
+
+  $responseKeys = @($env:VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  $spkiPins = @($env:VELORYFT_LICENSE_SPKI_PINS -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  if ($responseKeys.Count -lt 2 -or $spkiPins.Count -lt 2) {
+    throw 'a release requer pelo menos duas chaves publicas Ed25519 e dois pins SPKI (atual e reserva).'
+  }
+}
+
 if ($Assets) {
   Write-Host "==> Regenerando assets de marca..." -ForegroundColor Cyan
   python "$PSScriptRoot\assets\make_assets.py"
 }
+
+Require-LicenseBuildConfiguration
 
 if (-not $SkipBuild) {
   Write-Host "==> Encerrando HUD em execução (se houver)..." -ForegroundColor Cyan

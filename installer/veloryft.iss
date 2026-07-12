@@ -89,10 +89,68 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "{code:ActivationParameters}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 { Closes Veloryft before copying or removing its executable. }
+
+var
+  ActivationPage: TInputQueryWizardPage;
+
+procedure InitializeWizard;
+begin
+  ActivationPage := CreateInputQueryPage(
+    wpSelectDir,
+    'Activation',
+    'Activate a license or start a trial',
+    'Enter an optional Veloryft license key. Leave it blank to start the trial.'
+  );
+  ActivationPage.Add('License key:', False);
+end;
+
+function IsLicenseKey(const Key: String): Boolean;
+var
+  I: Integer;
+  Alphabet: String;
+begin
+  Result := False;
+  if (Length(Key) <> 24) or (Copy(Key, 1, 5) <> 'VLRY-') then Exit;
+  Alphabet := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for I := 1 to Length(Key) do begin
+    if (I = 5) or (I = 10) or (I = 15) or (I = 20) then begin
+      if Key[I] <> '-' then Exit;
+    end else if Pos(Key[I], Alphabet) = 0 then begin
+      Exit;
+    end;
+  end;
+  Result := True;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Key: String;
+begin
+  Result := True;
+  if CurPageID = ActivationPage.ID then begin
+    Key := Uppercase(Trim(ActivationPage.Values[0]));
+    ActivationPage.Values[0] := Key;
+    if (Key <> '') and (not IsLicenseKey(Key)) then begin
+      MsgBox('Enter a valid key in the format VLRY-XXXX-XXXX-XXXX-XXXX, or leave the field blank for a trial.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+function ActivationParameters(Param: String): String;
+var
+  Key: String;
+begin
+  Key := Trim(ActivationPage.Values[0]);
+  if Key = '' then
+    Result := ''
+  else
+    Result := '--activate "' + Key + '"';
+end;
 
 procedure KillRunningApp;
 var

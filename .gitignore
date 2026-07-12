@@ -2,3 +2,6 @@
 
 # Saída do instalador
 /dist/
+
+# Artefatos locais do Cargo podem conter o HMAC provisionado no build.
+/src-tauri/target/

@@ -51,6 +51,12 @@ src-tauri/src/render.rs   janela WS_EX_LAYERED|WS_EX_TRANSPARENT + Direct2D em D
 
 O binário in-game é `main.rs` → `render.rs` (overlay Direct2D).
 
+## Licenca
+
+O overlay valida uma licenca antes de abrir em builds de distribuicao. O
+provisionamento seguro do release, a rotacao de chaves/pins e o fluxo de
+ativacao estao em [docs/LICENCA.md](docs/LICENCA.md).
+
 ## Rodar
 
 Pré-requisitos: Rust (msvc), Windows 11.
@@ -94,7 +100,7 @@ default de 92% do fundo de escala.
       pedais, pneus, força-G do piloto, perfil de elevação da volta; suavização em
       Rust).
 - [ ] Atalhos globais completos, multi-monitor, gravação de sessão, build portable.
-- [ ] Telas fora do jogo (configuração, login/licença).
+- [ ] Telas fora do jogo (configuração e login/licença).
 
 ## Lançamento inicial — mapeamento de pista desligado
 

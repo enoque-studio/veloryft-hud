@@ -20,6 +20,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arc-swap = "1"
 tiny_http = "0.12"
+base64 = "0.22"
+ed25519-dalek = "2"
+hex = "0.4"
+hmac = "0.12"
+rand = "0.8"
+sha2 = "0.10"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["net", "rt-multi-thread", "time"] }
+url = "2"
+webpki-roots = "0.26"
+x509-parser = "0.16"
 
 # Contrato compartilhado com o veloryft-back (DTOs de rede). Path dep: exige os
 # repos lado a lado. Futuro: mover veloryft-core p/ repo próprio ou git dep.
@@ -44,11 +58,19 @@ features = [
   "Win32_Graphics_DirectWrite",
   "Win32_Graphics_DirectComposition",
   "Win32_Graphics_Dwm",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Memory",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
   "Win32_UI_Shell",
 ]
 
 [target.'cfg(windows)'.dependencies.windows-numerics]
 version = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+wmi = "0.18"
 
 # Metadados do exe (ícone, version info) — ver build.rs.
 [build-dependencies]
