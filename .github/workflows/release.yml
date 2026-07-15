@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      # veloryft-hud has a hard path dependency on the sibling repo
+      # veloryft-back (`veloryft-core = { path = "../../veloryft-back/crates/core" }`,
+      # relative to src-tauri/Cargo.toml). Both repos are checked out as
+      # siblings under a common parent so that relative path resolves
+      # without touching Cargo.toml.
+      - name: Checkout veloryft-hud
+        uses: actions/checkout@v4
+        with:
+          path: veloryft/veloryft-hud
+
+      - name: Checkout veloryft-back
+        uses: actions/checkout@v4
+        with:
+          repository: esousa-dev/veloryft-back
+          token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          path: veloryft/veloryft-back
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo build (release)
+        working-directory: veloryft/veloryft-hud/src-tauri
+        run: cargo build --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer with Inno Setup
+        working-directory: veloryft/veloryft-hud
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\veloryft.iss
+        shell: pwsh
+
+      - name: Rename installer to canonical asset name
+        working-directory: veloryft/veloryft-hud
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path dist -Filter "Veloryft-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "No installer exe found in dist\"
+          }
+          Copy-Item $installer.FullName "dist\veloryft-setup.exe"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veloryft-setup
+          path: veloryft/veloryft-hud/dist/veloryft-setup.exe
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: veloryft/veloryft-hud/dist/veloryft-setup.exe
+          token: ${{ secrets.GITHUB_TOKEN }}
