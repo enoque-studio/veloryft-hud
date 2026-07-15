@@ -108,7 +108,8 @@ default de 92% do fundo de escala.
 - [x] Núcleo UDP/parse + overlay nativo Direct2D (cluster RPM/marcha/velocidade/
       pedais, pneus, força-G do piloto, perfil de elevação da volta; suavização em
       Rust).
-- [ ] Atalhos globais completos, multi-monitor, gravação de sessão, build portable.
+- [x] Build portable (`installer/build-portable.ps1` — zip do .exe, sem instalador).
+- [ ] Atalhos globais completos, multi-monitor, gravação de sessão.
 - [ ] Telas fora do jogo (configuração e login/licença).
 
 ## Lançamento inicial — mapeamento de pista desligado

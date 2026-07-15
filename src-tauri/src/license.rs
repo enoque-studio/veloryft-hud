@@ -249,7 +249,7 @@ pub fn verify_token(
         || claims.iss != TOKEN_ISSUER
         || claims.aud != TOKEN_AUDIENCE
         || !matches!(claims.typ.as_str(), "trial" | "license")
-        || !matches!(claims.plan.as_str(), "trial" | "monthly" | "annual")
+        || !matches!(claims.plan.as_str(), "trial" | "monthly" | "annual" | "beta")
         || (claims.typ == "trial" && (claims.plan != "trial" || claims.lic.is_some()))
         || (claims.typ == "license" && (claims.plan == "trial" || claims.lic.is_none()))
         || !is_lower_hex(&claims.fp, 32)

@@ -240,7 +240,7 @@ fn decode_entitlement(
     let entitlement: EntitlementResponse =
         serde_json::from_slice(&response.body).map_err(|_| LicenseError::EntitlementDenied)?;
     if !matches!(entitlement.status.as_str(), "active" | "expired")
-        || !matches!(entitlement.plan.as_str(), "trial" | "monthly" | "annual")
+        || !matches!(entitlement.plan.as_str(), "trial" | "monthly" | "annual" | "beta")
         || (entitlement.status == "active" && entitlement.token.is_none())
         || (entitlement.status == "expired" && entitlement.token.is_some())
     {

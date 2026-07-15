@@ -1,0 +1,60 @@
+name: Release beta installer
+
+# Builds the Windows installer and publishes it to a single rolling GitHub
+# Release tagged `beta`, under a fixed asset name (no version in the
+# filename) so the site's download button never needs to change:
+# https://github.com/esousa-dev/veloryft-hud/releases/download/beta/Veloryft-Setup-beta.exe
+#
+# Requires these repo secrets (see docs/LICENCA.md for what they mean):
+#   VELORYFT_LICENSE_ORIGIN
+#   VELORYFT_LICENSE_APP_HMAC_SECRET
+#   VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS
+#   VELORYFT_LICENSE_SPKI_PINS
+
+on:
+  push:
+    tags: ["beta-*"]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    env:
+      VELORYFT_LICENSE_ORIGIN: ${{ secrets.VELORYFT_LICENSE_ORIGIN }}
+      VELORYFT_LICENSE_APP_HMAC_SECRET: ${{ secrets.VELORYFT_LICENSE_APP_HMAC_SECRET }}
+      VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS: ${{ secrets.VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS }}
+      VELORYFT_LICENSE_SPKI_PINS: ${{ secrets.VELORYFT_LICENSE_SPKI_PINS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: ./installer/build-installer.ps1
+
+      - name: Build portable zip
+        shell: pwsh
+        run: ./installer/build-portable.ps1 -SkipBuild
+
+      - name: Stage fixed-name assets
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\Veloryft-Setup-*.exe | Select-Object -First 1
+          Copy-Item $setup.FullName "dist\Veloryft-Setup-beta.exe"
+          $portable = Get-ChildItem dist\Veloryft-Portable-*.zip | Select-Object -First 1
+          Copy-Item $portable.FullName "dist\Veloryft-Portable-beta.zip"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta
+          name: Veloryft — Open Beta
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/Veloryft-Setup-*.exe
+            dist/Veloryft-Portable-*.zip
