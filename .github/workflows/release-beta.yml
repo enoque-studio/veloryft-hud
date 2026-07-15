@@ -22,6 +22,8 @@ on:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    permissions:
+      contents: write
     env:
       VELORYFT_LICENSE_ORIGIN: ${{ secrets.VELORYFT_LICENSE_ORIGIN }}
       VELORYFT_LICENSE_APP_HMAC_SECRET: ${{ secrets.VELORYFT_LICENSE_APP_HMAC_SECRET }}
