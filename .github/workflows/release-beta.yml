@@ -10,6 +10,9 @@ name: Release beta installer
 #   VELORYFT_LICENSE_APP_HMAC_SECRET
 #   VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS
 #   VELORYFT_LICENSE_SPKI_PINS
+#   VELORYFT_BACK_PAT — a PAT with read-only "Contents" access to the
+#   private esousa-dev/veloryft-back repo (needed to check out veloryft-core,
+#   a path dependency of src-tauri/Cargo.toml).
 
 on:
   push:
@@ -26,6 +29,18 @@ jobs:
       VELORYFT_LICENSE_SPKI_PINS: ${{ secrets.VELORYFT_LICENSE_SPKI_PINS }}
     steps:
       - uses: actions/checkout@v4
+
+      # src-tauri/Cargo.toml depends on veloryft-core via a relative path
+      # (../../veloryft-back/crates/core) — the two repos sit side by side on
+      # dev machines, so CI needs the sibling checked out at the same
+      # relative location (../veloryft-back, next to this repo's own root).
+      - uses: actions/checkout@v4
+        with:
+          repository: esousa-dev/veloryft-back
+          path: ../veloryft-back
+          # veloryft-back is private: the default GITHUB_TOKEN only covers
+          # this repo, so a PAT with read access to veloryft-back is required.
+          token: ${{ secrets.VELORYFT_BACK_PAT }}
 
       - uses: dtolnay/rust-toolchain@stable
 
