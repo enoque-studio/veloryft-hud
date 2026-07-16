@@ -36,6 +36,9 @@ fn show_license_error(error: &forza_hud_native_lib::license::LicenseError) {
         forza_hud_native_lib::license::LicenseError::FingerprintUnavailable => {
             w!("Nao foi possivel identificar esta maquina para validar a licenca.")
         }
+        forza_hud_native_lib::license::LicenseError::NetworkUnavailable => {
+            w!("Nao foi possivel conectar ao servico de licencas do Veloryft.\n\nVerifique sua conexao com a internet. Se voce usa um antivirus com inspecao SSL/HTTPS (ex: Norton, Kaspersky), adicione o Veloryft como excecao \u{2014} a conexao do Veloryft e protegida contra interceptacao e sera recusada nesses casos.")
+        }
         _ => w!("Nao foi possivel validar a licenca do Veloryft."),
     };
     unsafe {
