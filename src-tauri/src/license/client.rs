@@ -40,6 +40,7 @@ struct ActivationRequest<'a> {
 struct ValidationRequest<'a> {
     fingerprint: &'a [fingerprint::FingerprintComponent],
     machine: &'a MachineInfo,
+    app_version: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -138,6 +139,7 @@ async fn validate_existing(
     let request = ValidationRequest {
         fingerprint: &fingerprint.components,
         machine: &fingerprint.machine,
+        app_version: APP_VERSION,
     };
     let response = post_signed(
         http,
