@@ -1031,7 +1031,7 @@ mod tests {
         let mut r = WorldMapRecorder::new();
         r.set_recording(true);
         r.ingest(&dash_pos(0.0, 100.0, 0.0), true);
-        r.ingest(&dash_pos(0.5, 999.0, 0.0), true); // <1.5m: ignorado
+        r.ingest(&dash_pos(0.02, 999.0, 0.0), true); // < MIN_MOVE_M (5 cm): ignorado
         let hm = r.to_heightmap();
         assert_eq!(hm.cells[0].n, 1);
         assert_eq!(hm.cells[0].y_mean, 100.0);

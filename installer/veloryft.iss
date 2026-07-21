@@ -93,9 +93,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 
 [Code]
 { Closes Veloryft before copying or removing its executable. No activation
-  step: the app auto-provisions a hardware-bound beta license against the
-  license server on first launch (see license/client.rs, authorize_startup),
-  so installation never asks for a key. }
+  step: the beta runs without any license check, so installation never asks
+  for a key. }
 
 procedure KillRunningApp;
 var

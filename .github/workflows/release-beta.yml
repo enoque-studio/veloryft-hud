@@ -5,11 +5,7 @@ name: Release beta installer
 # filename) so the site's download button never needs to change:
 # https://github.com/esousa-dev/veloryft-hud/releases/download/beta/Veloryft-Setup-beta.exe
 #
-# Requires these repo secrets (see docs/LICENCA.md for what they mean):
-#   VELORYFT_LICENSE_ORIGIN
-#   VELORYFT_LICENSE_APP_HMAC_SECRET
-#   VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS
-#   VELORYFT_LICENSE_SPKI_PINS
+# Requires this repo secret:
 #   VELORYFT_BACK_PAT — a PAT with read-only "Contents" access to the
 #   private esousa-dev/veloryft-back repo (needed to check out veloryft-core,
 #   a path dependency of src-tauri/Cargo.toml).
@@ -24,11 +20,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    env:
-      VELORYFT_LICENSE_ORIGIN: ${{ secrets.VELORYFT_LICENSE_ORIGIN }}
-      VELORYFT_LICENSE_APP_HMAC_SECRET: ${{ secrets.VELORYFT_LICENSE_APP_HMAC_SECRET }}
-      VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS: ${{ secrets.VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS }}
-      VELORYFT_LICENSE_SPKI_PINS: ${{ secrets.VELORYFT_LICENSE_SPKI_PINS }}
     steps:
       - uses: actions/checkout@v4
 

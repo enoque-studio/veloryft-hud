@@ -1,8 +1,8 @@
 <#
   build-portable.ps1 — gera a versão portable do Veloryft (sem instalador).
 
-  A app só grava estado em %APPDATA%/%LOCALAPPDATA%/%ProgramData% (ver
-  license/state.rs), então o mesmo .exe já roda de qualquer pasta (pendrive,
+  A app não depende de arquivos ao lado do exe (catálogo de carros embutido
+  no binário), então o mesmo .exe já roda de qualquer pasta (pendrive,
   Desktop, etc.) sem instalação. Este script só empacota o .exe + docs num zip.
 
   Uso:
@@ -19,25 +19,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location $repo
-
-function Require-LicenseBuildConfiguration {
-  $required = @(
-    'VELORYFT_LICENSE_ORIGIN',
-    'VELORYFT_LICENSE_APP_HMAC_SECRET',
-    'VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS',
-    'VELORYFT_LICENSE_SPKI_PINS'
-  )
-  $missing = @(
-    $required | Where-Object {
-      [string]::IsNullOrWhiteSpace((Get-Item -Path "Env:$_" -ErrorAction SilentlyContinue).Value)
-    }
-  )
-  if ($missing.Count -gt 0) {
-    throw "configuração de licença ausente: $($missing -join ', '). Consulte docs/LICENCA.md."
-  }
-}
-
-Require-LicenseBuildConfiguration
 
 if (-not $SkipBuild) {
   Write-Host "==> Encerrando HUD em execução (se houver)..." -ForegroundColor Cyan

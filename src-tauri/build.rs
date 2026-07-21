@@ -38,6 +38,8 @@ fn main() {
 
 /// Produz constantes privadas no OUT_DIR. Nunca lê valores em tempo de
 /// execução: a origem e as raízes de confiança fazem parte do artefato assinado.
+/// No beta o binário não executa o gate de licença, então as variáveis são
+/// opcionais em qualquer perfil — ausentes, o módulo fica "não provisionado".
 fn write_license_config() {
     const CONFIG_VARS: [&str; 4] = [
         "VELORYFT_LICENSE_ORIGIN",
@@ -53,17 +55,6 @@ fn write_license_config() {
     let app_hmac_secret = build_value("VELORYFT_LICENSE_APP_HMAC_SECRET");
     let response_keys = split_values(build_value("VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS"));
     let spki_pins = split_values(build_value("VELORYFT_LICENSE_SPKI_PINS"));
-    let is_release = std::env::var("PROFILE").as_deref() == Ok("release");
-    if is_release
-        && (origin.is_none()
-            || app_hmac_secret.is_none()
-            || response_keys.len() < 2
-            || spki_pins.len() < 2)
-    {
-        panic!(
-            "release build requires VELORYFT_LICENSE_ORIGIN, VELORYFT_LICENSE_APP_HMAC_SECRET, at least two VELORYFT_LICENSE_RESPONSE_PUBLIC_KEYS, and at least two VELORYFT_LICENSE_SPKI_PINS"
-        );
-    }
 
     let content = format!(
         "pub const LICENSE_ORIGIN: Option<&str> = {};\n\
