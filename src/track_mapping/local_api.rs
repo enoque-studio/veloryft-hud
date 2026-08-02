@@ -72,15 +72,25 @@ fn json_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> 
 }
 
 fn read_limited_body(req: &mut tiny_http::Request) -> Result<Vec<u8>, u16> {
-    let mut raw = Vec::with_capacity(1_024);
-    req.as_reader()
+    read_limited(req.as_reader())
+}
+
+/// Reads at most [`MAX_REQUEST_BODY_BYTES`], returning 413 rather than
+/// allocating whatever a caller claims to be sending.
+///
+/// Split out from [`read_limited_body`] so the limit can be tested without
+/// standing up an HTTP server: the cap is the only thing between this loopback
+/// endpoint and a local process exhausting memory.
+fn read_limited(source: &mut (impl Read + ?Sized)) -> Result<Vec<u8>, u16> {
+    let mut body = Vec::with_capacity(1_024);
+    source
         .take(MAX_REQUEST_BODY_BYTES + 1)
-        .read_to_end(&mut raw)
+        .read_to_end(&mut body)
         .map_err(|_| 400_u16)?;
-    if raw.len() > MAX_REQUEST_BODY_BYTES as usize {
+    if body.len() > MAX_REQUEST_BODY_BYTES as usize {
         return Err(413);
     }
-    Ok(raw)
+    Ok(body)
 }
 
 #[derive(Serialize)]
@@ -273,16 +283,70 @@ pub fn spawn(rec: Arc<Mutex<WorldMapRecorder>>, persist_path: PathBuf) -> thread
 
 #[cfg(test)]
 mod tests {
-    use super::is_allowed_viewer_origin;
+    use super::*;
 
     #[test]
     fn accepts_only_loopback_viewer_origins() {
+        assert!(is_allowed_viewer_origin("http://localhost"));
+        assert!(is_allowed_viewer_origin("http://127.0.0.1"));
         assert!(is_allowed_viewer_origin("http://localhost:5173"));
         assert!(is_allowed_viewer_origin("http://127.0.0.1:4173"));
-        assert!(!is_allowed_viewer_origin("https://localhost:5173"));
+    }
+
+    #[test]
+    fn rejects_origins_that_only_look_like_loopback() {
+        // A site can register a hostname ending in "localhost"; matching on a
+        // prefix without the port separator would let it through.
         assert!(!is_allowed_viewer_origin(
             "http://localhost.evil.example:5173"
         ));
+        assert!(!is_allowed_viewer_origin("http://127.0.0.1.evil.example"));
         assert!(!is_allowed_viewer_origin("https://evil.example"));
+        assert!(!is_allowed_viewer_origin("http://localhost:notaport"));
+        assert!(!is_allowed_viewer_origin("http://localhost:"));
+        assert!(!is_allowed_viewer_origin(""));
+    }
+
+    #[test]
+    fn rejects_loopback_over_https_because_the_viewer_is_served_over_http() {
+        // The dev viewer is plain HTTP. Accepting https would widen the surface
+        // for no benefit, since this server never speaks TLS.
+        assert!(!is_allowed_viewer_origin("https://localhost:5173"));
+        assert!(!is_allowed_viewer_origin("https://127.0.0.1:4173"));
+    }
+
+    #[test]
+    fn a_body_within_the_limit_is_read_whole() {
+        let body = vec![b'x'; MAX_REQUEST_BODY_BYTES as usize];
+
+        assert_eq!(read_limited(&mut body.as_slice()), Ok(body));
+    }
+
+    #[test]
+    fn a_body_over_the_limit_is_refused_with_413() {
+        let body = vec![b'x'; MAX_REQUEST_BODY_BYTES as usize + 1];
+
+        assert_eq!(read_limited(&mut body.as_slice()), Err(413));
+    }
+
+    #[test]
+    fn an_empty_body_is_not_an_error() {
+        assert_eq!(read_limited(&mut [].as_slice()), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn the_body_limit_already_bounds_the_segment_count() {
+        // Two limits guard /path/delta: the body size and MAX_DELTA_SEGMENTS.
+        // The smallest a `have` pair can be encoded is `[0,0],` — six bytes —
+        // so the body limit caps the count well below the explicit segment cap.
+        // That ordering is the point: the cheap check (size) rejects first, and
+        // the segment cap is a backstop that cannot be reached by a larger body.
+        const SMALLEST_ENCODED_PAIR_BYTES: usize = 6;
+        let reachable_segments = MAX_REQUEST_BODY_BYTES as usize / SMALLEST_ENCODED_PAIR_BYTES;
+
+        assert!(
+            reachable_segments < MAX_DELTA_SEGMENTS,
+            "a request within the body limit must not be able to exceed the segment cap"
+        );
     }
 }
