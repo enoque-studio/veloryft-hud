@@ -50,3 +50,15 @@ Se medições em máquinas reais ainda mostrarem bloqueio relevante, a próxima 
 é substituir DIB + `UpdateLayeredWindow` por swap chain de composição e
 DirectComposition, mantendo click-through via hit-test. Essa migração deve ser
 guiada por métricas de latência de apresentação, não pela introdução de WebView2.
+
+## Barra crítica isolada (0.1.0.2)
+
+A barra de acelerador foi removida do bitmap de 680 × 240 do cluster e passou
+para uma janela layered própria, transparente e alinhada sobre o card. Essa
+janela é controlada por uma thread exclusiva, lê diretamente o snapshot mais
+recente e mantém apenas o estado atual — nunca uma fila de frames.
+
+O `ID2D1DCRenderTarget` da barra usa `D2D1_RENDER_TARGET_TYPE_SOFTWARE`. Assim,
+o preenchimento da barra não compete com o jogo na fila de rasterização da GPU;
+somente a composição final do pequeno bitmap continua dependendo do DWM. Durante
+o modo de edição ela é ocultada e sua posição acompanha a geometria do cluster.

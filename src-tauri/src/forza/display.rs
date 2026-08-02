@@ -357,7 +357,6 @@ pub fn panel_paint_key(
             h = mix(h, (f.shift_frac * 1024.0).round() as u64);
             h = mix(h, (f.limit_frac * 1024.0).round() as u64);
             h = mix(h, if f.limit_known { 1 } else { 0 });
-            h = mix(h, (f.accel * 512.0).round() as u64);
             h = mix(h, (f.brake * 512.0).round() as u64);
             h = mix(h, f.speed.round() as u64);
             h = mix(h, f.gear.unwrap_or(255) as u64);
@@ -455,6 +454,19 @@ mod tests {
         };
         let _ = panel_paint_key(PanelKind::Cluster, &f, false, 0, None);
         let _ = panel_paint_key(PanelKind::Tires, &f, false, 0, None);
+    }
+
+    #[test]
+    fn acelerador_isolado_nao_invalida_bitmap_do_cluster() {
+        let mut f = DisplayFrame {
+            alpha: 1.0,
+            accel: 0.0,
+            ..Default::default()
+        };
+        let before = panel_paint_key(PanelKind::Cluster, &f, false, 0, None);
+        f.accel = 1.0;
+        let after = panel_paint_key(PanelKind::Cluster, &f, false, 0, None);
+        assert_eq!(before, after);
     }
 
     #[test]

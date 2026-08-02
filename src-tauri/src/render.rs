@@ -156,6 +156,8 @@ const CL_META_Y: f32 = 86.0;
 const CL_SPEED_Y: f32 = 124.0;
 const CL_BRAKE_Y: f32 = 156.0;
 const CL_ACCEL_Y: f32 = 188.0;
+const TH_W: i32 = (CL_RIGHT_R - CL_RIGHT_X) as i32;
+const TH_H: i32 = 34;
 // --- Pneus ---
 const TR_W: i32 = 256;
 const TR_H: i32 = 272;
@@ -901,9 +903,12 @@ unsafe fn design_of(hwnd: HWND) -> (i32, i32) {
     (((ud >> 16) & 0xFFFF) as i32, (ud & 0xFFFF) as i32)
 }
 
-fn make_dcrt(factory: &ID2D1Factory) -> Result<ID2D1DCRenderTarget> {
+fn make_dcrt_with_type(
+    factory: &ID2D1Factory,
+    render_type: D2D1_RENDER_TARGET_TYPE,
+) -> Result<ID2D1DCRenderTarget> {
     let props = D2D1_RENDER_TARGET_PROPERTIES {
-        r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        r#type: render_type,
         pixelFormat: D2D1_PIXEL_FORMAT {
             format: DXGI_FORMAT_B8G8R8A8_UNORM,
             alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
@@ -914,6 +919,10 @@ fn make_dcrt(factory: &ID2D1Factory) -> Result<ID2D1DCRenderTarget> {
         minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
     };
     unsafe { factory.CreateDCRenderTarget(&props) }
+}
+
+fn make_dcrt(factory: &ID2D1Factory) -> Result<ID2D1DCRenderTarget> {
+    make_dcrt_with_type(factory, D2D1_RENDER_TARGET_TYPE_DEFAULT)
 }
 
 /// Atualiza a janela layered com o conteúdo já desenhado no `memdc`.
@@ -1338,7 +1347,6 @@ impl Panel {
         );
 
         self.pedal_row_right("BRAKE", f.brake, &self.b.brake, py(CL_BRAKE_Y), w);
-        self.pedal_row_right("THROTTLE", f.accel, &self.b.accel, py(CL_ACCEL_Y), w);
     }
 
     fn draw_tire_range(
@@ -1933,6 +1941,298 @@ impl Drop for Panel {
             let _ = DeleteDC(self.memdc);
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ThrottlePlacement {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+fn throttle_placement(cluster: &Panel) -> ThrottlePlacement {
+    let sx = cluster.size.cx as f32 / CL_W as f32;
+    let sy = cluster.size.cy as f32 / CL_H as f32;
+    ThrottlePlacement {
+        x: cluster.pos.x + (CL_RIGHT_X * sx).round() as i32,
+        y: cluster.pos.y + ((CL_ACCEL_Y - TH_H as f32 / 2.0) * sy).round() as i32,
+        w: (TH_W as f32 * sx).round().max(MIN_SZ as f32) as i32,
+        h: (TH_H as f32 * sy).round().max(16.0) as i32,
+    }
+}
+
+/// Superfície mínima e independente para o acelerador. O raster é forçado para
+/// software; somente o bitmap final pequeno atravessa o DWM.
+struct CriticalThrottleSurface {
+    hwnd: HWND,
+    memdc: HDC,
+    bitmap: HBITMAP,
+    dcrt: ID2D1DCRenderTarget,
+    rt: ID2D1RenderTarget,
+    brushes: Brushes,
+    fonts: Fonts,
+    placement: ThrottlePlacement,
+    shown: bool,
+    paint_key: u64,
+}
+
+impl CriticalThrottleSurface {
+    fn new(class: PCWSTR, instance: HINSTANCE, placement: ThrottlePlacement) -> Result<Self> {
+        let factory: ID2D1Factory =
+            unsafe { D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None)? };
+        let fonts = make_fonts()?;
+        let hwnd = make_window(
+            class,
+            instance,
+            placement.x,
+            placement.y,
+            placement.w,
+            placement.h,
+        )?;
+        let (memdc, bitmap) = make_dib(placement.w, placement.h)?;
+        let dcrt = make_dcrt_with_type(&factory, D2D1_RENDER_TARGET_TYPE_SOFTWARE)?;
+        let rt: ID2D1RenderTarget = dcrt.cast()?;
+        unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE) };
+        let brushes = Brushes::new(&rt, TH_H as f32)?;
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        Ok(Self {
+            hwnd,
+            memdc,
+            bitmap,
+            dcrt,
+            rt,
+            brushes,
+            fonts,
+            placement,
+            shown: false,
+            paint_key: 0,
+        })
+    }
+
+    fn set_shown(&mut self, shown: bool) {
+        if self.shown == shown {
+            return;
+        }
+        self.shown = shown;
+        unsafe {
+            let _ = ShowWindow(self.hwnd, if shown { SW_SHOWNOACTIVATE } else { SW_HIDE });
+        }
+        if shown {
+            bring_to_top(self.hwnd);
+        }
+    }
+
+    fn sync_placement(&mut self, placement: ThrottlePlacement) -> Result<()> {
+        if placement == self.placement {
+            return Ok(());
+        }
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                Some(HWND_TOPMOST),
+                placement.x,
+                placement.y,
+                placement.w,
+                placement.h,
+                SWP_NOACTIVATE,
+            )?;
+        }
+        if placement.w != self.placement.w || placement.h != self.placement.h {
+            let new_bitmap = create_dib_bitmap(self.memdc, placement.w, placement.h)?;
+            unsafe {
+                let old = SelectObject(self.memdc, HGDIOBJ(new_bitmap.0));
+                let _ = DeleteObject(old);
+            }
+            self.bitmap = new_bitmap;
+        }
+        self.placement = placement;
+        self.paint_key = 0;
+        Ok(())
+    }
+
+    fn draw(&mut self, accel: f32, alpha: f32, visible: bool) -> Result<()> {
+        self.set_shown(visible);
+        if !visible {
+            self.paint_key = 0;
+            return Ok(());
+        }
+        let key = ((accel.clamp(0.0, 1.0) * 1024.0).round() as u64)
+            | (((alpha.clamp(0.0, 1.0) * 255.0).round() as u64) << 16);
+        if key == self.paint_key {
+            return Ok(());
+        }
+        self.paint_key = key;
+
+        let w = self.placement.w as f32;
+        let h = self.placement.h as f32;
+        let sx = w / TH_W as f32;
+        let label_w = 64.0 * sx;
+        let gap = 8.0 * sx;
+        let bar_x = label_w + gap;
+        let bar_w = w - bar_x;
+        let thickness = (CL_PEDAL_H * sx).max(2.0);
+        let y = h / 2.0;
+        let full = RECT {
+            left: 0,
+            top: 0,
+            right: self.placement.w,
+            bottom: self.placement.h,
+        };
+        unsafe {
+            self.dcrt.BindDC(self.memdc, &full)?;
+            self.rt.BeginDraw();
+            self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
+            let label: Vec<u16> = "THROTTLE".encode_utf16().collect();
+            self.rt.DrawText(
+                &label,
+                &self.fonts.small_left,
+                &rectf(0.0, 0.0, label_w, h),
+                &self.brushes.gray,
+                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                DWRITE_MEASURING_MODE_NATURAL,
+            );
+            let track = rounded(
+                rectf(
+                    bar_x,
+                    y - thickness / 2.0,
+                    bar_x + bar_w,
+                    y + thickness / 2.0,
+                ),
+                thickness / 2.0,
+            );
+            self.rt.FillRoundedRectangle(&track, &self.brushes.track);
+            self.rt
+                .DrawRoundedRectangle(&track, &self.brushes.track_edge, 0.75, None);
+            let filled = bar_w * accel.clamp(0.0, 1.0);
+            if filled > 0.5 {
+                self.rt.FillRoundedRectangle(
+                    &rounded(
+                        rectf(
+                            bar_x,
+                            y - thickness / 2.0,
+                            bar_x + filled,
+                            y + thickness / 2.0,
+                        ),
+                        thickness / 2.0,
+                    ),
+                    &self.brushes.accel,
+                );
+            }
+            self.rt.EndDraw(None, None)?;
+        }
+        present(
+            self.hwnd,
+            self.memdc,
+            POINT {
+                x: self.placement.x,
+                y: self.placement.y,
+            },
+            SIZE {
+                cx: self.placement.w,
+                cy: self.placement.h,
+            },
+            (alpha.clamp(0.0, 1.0) * 255.0).round() as u8,
+        )
+    }
+}
+
+impl Drop for CriticalThrottleSurface {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.bitmap.0));
+            let _ = DeleteDC(self.memdc);
+        }
+    }
+}
+
+fn spawn_critical_throttle(
+    shared: Arc<Shared>,
+    placement: Arc<Mutex<ThrottlePlacement>>,
+) -> thread::JoinHandle<()> {
+    thread::Builder::new()
+        .name("critical-throttle-d2d".into())
+        .spawn(move || unsafe {
+            let instance = match GetModuleHandleW(None) {
+                Ok(module) => HINSTANCE(module.0),
+                Err(e) => {
+                    eprintln!("[throttle] módulo: {e:?}");
+                    return;
+                }
+            };
+            let class = w!("VeloryftCriticalThrottleClass");
+            RegisterClassW(&WNDCLASSW {
+                hInstance: instance,
+                lpszClassName: class,
+                lpfnWndProc: Some(panel_proc),
+                hbrBackground: HBRUSH::default(),
+                ..Default::default()
+            });
+            let initial = *placement.lock().unwrap_or_else(|p| p.into_inner());
+            let mut surface = match CriticalThrottleSurface::new(class, instance, initial) {
+                Ok(surface) => surface,
+                Err(e) => {
+                    eprintln!("[throttle] inicialização: {e:?}");
+                    return;
+                }
+            };
+            let mut displayed = 0.0f32;
+            let mut alpha = 0.0f32;
+            let mut last_tick = Instant::now();
+            let mut last_packet = 0u64;
+            let mut last_change = Instant::now();
+            let mut msg = MSG::default();
+            loop {
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                let now = Instant::now();
+                let dt = (now - last_tick).as_secs_f32().min(0.1);
+                last_tick = now;
+                let snap = shared.latest();
+                if snap._pkt != last_packet {
+                    last_packet = snap._pkt;
+                    last_change = now;
+                }
+                let age = (now - last_change).as_secs_f32();
+                let fresh = age < visibility::STALE_S;
+                let driving = visibility::is_hud_visible(&snap, age);
+                let target = if fresh {
+                    snap.accel.unwrap_or(0.0) / 100.0
+                } else {
+                    0.0
+                };
+                displayed = display::exp_smooth(displayed, target, dt, display::TAU_BAR);
+                let target_alpha = if driving { 1.0 } else { 0.0 };
+                let alpha_tau = if target_alpha > alpha {
+                    display::TAU_FADE_IN
+                } else {
+                    display::TAU_FADE_OUT
+                };
+                alpha = display::exp_smooth(alpha, target_alpha, dt, alpha_tau);
+                if target_alpha == 0.0 && alpha < 0.015 {
+                    alpha = 0.0;
+                }
+                let next_placement = *placement.lock().unwrap_or_else(|p| p.into_inner());
+                if let Err(e) = surface.sync_placement(next_placement) {
+                    eprintln!("[throttle] geometria: {e:?}");
+                }
+                let visible = !HUD_HIDDEN.load(Ordering::Relaxed)
+                    && !EDIT.load(Ordering::Relaxed)
+                    && alpha > 0.01;
+                if let Err(e) = surface.draw(displayed, alpha, visible) {
+                    eprintln!("[throttle] draw: {e:?}");
+                }
+                let elapsed = last_tick.elapsed();
+                if elapsed < Duration::from_millis(FRAME_MIN_MS) {
+                    thread::sleep(Duration::from_millis(FRAME_MIN_MS) - elapsed);
+                }
+            }
+        })
+        .expect("falha ao iniciar thread crítica do acelerador")
 }
 
 // ===================== Malha (fundo do modo edição) =====================
@@ -3131,6 +3431,14 @@ pub fn run() -> Result<()> {
         let mut last_frame = Instant::now();
 
         let shared = Arc::new(Shared::new());
+        let initial_throttle = panels
+            .iter()
+            .find(|panel| panel.kind == Kind::Cluster)
+            .map(throttle_placement)
+            .expect("painel cluster ausente");
+        let throttle_placement_state = Arc::new(Mutex::new(initial_throttle));
+        let _throttle_thread =
+            spawn_critical_throttle(shared.clone(), throttle_placement_state.clone());
 
         // Mapeamento de pista (worldmap + live API :9877) — desligado no lançamento.
         // Ver `forza::TRACK_MAPPING_ENABLED`.
@@ -3290,6 +3598,11 @@ pub fn run() -> Result<()> {
                     Ok(None) => {}
                     Err(e) => eprintln!("[overlay] draw: {e:?}"),
                 }
+            }
+            if let Some(cluster) = panels.iter().find(|panel| panel.kind == Kind::Cluster) {
+                *throttle_placement_state
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner()) = throttle_placement(cluster);
             }
             if edit {
                 let _ = toolbar.draw();
