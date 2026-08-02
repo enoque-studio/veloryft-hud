@@ -1,149 +1,229 @@
-# Veloryft — HUD de telemetria nativo para Forza Horizon 6
+# Veloryft
 
-O **Veloryft** é um overlay de telemetria para Windows, escrito em **Rust**, que
-captura os pacotes UDP do Forza Horizon 6 e desenha um HUD in-game fluido com
-**Direct2D nativo + janela layered**. O clique atravessa o overlay e chega ao
-jogo, enquanto os painéis exibem RPM, marcha, velocidade, pedais, temperatura dos
-pneus, força G e perfil de elevação da volta.
+A native telemetry HUD for Forza on Windows. Written in Rust, drawn with
+Direct2D, and you can click straight through it into the game.
 
-> **Nota sobre nomes:** `veloryft-hud` é o nome deste repositório. O produto
-> voltado ao usuário chama-se apenas **Veloryft**.
+![The Veloryft overlay](docs/assets/screenshots/hud_overlay.png)
 
-Para começar a usar ou desenvolver, leia o [guia de início rápido](docs/INICIO.md).
-A documentação completa está em [`docs/`](docs/INDEX.md).
+> **Open beta.** It works and people use it, but expect rough edges. There is no
+> license check, no account, and no key — download it and run it.
 
-## Destaques
+*[Leia em português](README.pt_BR.md)*
 
-- **Caminho de dados em Rust**, zero-copy, sem HTTP/SSE/JSON intermediário.
-- **Transporte event-driven** a partir do UDP do jogo.
-- **Overlay nativo**: composição GPU com alpha por pixel, sem o judder de WebView2.
-- **Click-through real**: o mouse passa pelo HUD e interage com o jogo.
-- **Licenciamento server-authoritative** com Ed25519, HMAC, TLS pinning, DPAPI e TPM.
-- **Build standalone**: CRT estático, sem depender do Visual C++ Redistributable.
+## What it does
 
-## Por que o overlay nativo
+- **RPM, gear, speed and pedals** in a cluster you can put where you like.
+- **A shift point learned from your car**, not guessed from a percentage of the
+  redline. Veloryft watches what the car does at full throttle and works out
+  where holding the gear stops paying.
+- **Tire temperatures** per corner, with the range covered this session.
+- **G-force** — lateral and longitudinal load, with a decaying trail.
+- **The lap's elevation profile**, with a marker showing where you are on it.
+- **Real click-through.** The mouse reaches the game, not the overlay.
+- **It hides itself** in menus, on pause screens, in replays and during
+  cutscenes, and comes back when you start driving.
 
-A janela transparente fullscreen do WebView2 passa pelo *redirection bitmap* e o
-DWM mescla a camada alpha a cada frame → judder que nenhum ajuste de CSS/rAF
-resolve.
+## Privacy
 
-O overlay nativo usa uma **janela pequena `WS_EX_LAYERED | WS_EX_TRANSPARENT`**
-(faixa do HUD, não tela cheia): o Windows garante o click-through entre processos
-(o clique vai pro jogo) e o resto da tela fica livre. Direct2D desenha num DIB
-premultiplicado enviado ao DWM via `UpdateLayeredWindow` — composição GPU, alpha
-por pixel, sem judder. Direct2D mantém o estilo (gradiente, cantos, anti-alias).
+**Nothing leaves your machine.** No account, no analytics, no update check, no
+outbound network code at all. Veloryft reads the telemetry the game broadcasts
+to `127.0.0.1` and writes settings to your own profile folder.
 
-Por que não DirectComposition: dá render liso, mas `WS_EX_LAYERED` (necessário p/
-click-through cross-process) é incompatível com o alpha-por-pixel do DComp, e
-`WS_EX_TRANSPARENT`/`HTTRANSPARENT` sozinhos não atravessam para outro processo.
+You do not have to take that on trust: the source is public, the dependency
+graph contains no HTTP client and no TLS stack, and a firewall will show you
+nothing leaving. See [privacy](docs/security/privacy.md).
 
-## Arquitetura
+## Requirements
 
-```
-Forza (Data Out UDP :20066)
-        │
-        ▼
-src-tauri/src/forza/         (núcleo de telemetria)
-  udp.rs        thread: recv_from → parse → snapshot (callback opcional)
-  packet.rs     detecção Sled/Dash/FH6 + leitura por offset (porta de packet.py)
-  payload.rs    telemetria derivada
-  display.rs    suavização, visibilidade (consome revlimit)
-  revlimit.rs   redline learning: corte real + ponto de troca por carro,
-                aprendido a todo gás e persistido em %APPDATA%
-  elevation.rs  perfil de elevação da volta (loop fechado + bolinha)
-  state.rs      snapshot lock-free (arc-swap)
-        │
-        ▼
-src-tauri/src/render.rs   janela WS_EX_LAYERED|WS_EX_TRANSPARENT + Direct2D em DIB
-                          + UpdateLayeredWindow (click-through); dirty-skip + sleep
-                          adaptativo (menos carga na GPU)
-```
+- 64-bit Windows 10 or later
+- A Forza title with "Data Out" telemetry
+- Nothing else — no Visual C++ Redistributable, no runtime
 
-O binário in-game é `main.rs` → `render.rs` (overlay Direct2D).
+---
 
-## Licenca
+## For users
 
-O overlay valida uma licenca antes de abrir em builds de distribuicao. O
-provisionamento seguro do release, a rotacao de chaves/pins e o fluxo de
-ativacao estao em [docs/LICENCA.md](docs/LICENCA.md).
+### 1. Download
 
-## Executar
+From [Releases](https://github.com/ESousa97/veloryft-hud/releases):
 
-Pré-requisitos: Rust (toolchain MSVC), Windows 10/11. Veja detalhes em
-[docs/INICIO.md](docs/INICIO.md).
+| | |
+| --- | --- |
+| `Veloryft-Setup-<version>.exe` | Installer, with a Start menu entry and an uninstaller |
+| `Veloryft-Portable-<version>.zip` | Unzip and run; nothing is installed |
 
-```sh
-# HUD in-game — overlay Direct2D nativo:
-cargo run --manifest-path src-tauri/Cargo.toml
-#   sair: Ctrl+Alt+Q
-#   reposicionar painéis: Ctrl+Alt+E
+### 2. Verify it
+
+Releases are **not code-signed**, so Windows SmartScreen will warn you. Check
+the file against the published `SHA256SUMS` before running it:
+
+```powershell
+(Get-FileHash .\Veloryft-Setup-0.2.0-beta.1.exe).Hash.ToLower()
 ```
 
-No Forza Horizon 6: **Configurações → HUD/Telemetria → Data Out = Ligado**, IP
-`127.0.0.1`, porta `20066` (override com a env `FORZA_UDP_PORT`).
+If it matches, click **More info** → **Run anyway**. If it does not, do not run
+it. See [installation](docs/getting_started/installation.md).
 
-Sem o jogo, o HUD fica oculto. Ao dirigir, aparece; some 100% em menu, pausa ou
-cinemática. O modo de edição (**Ctrl+Alt+E**) força a exibição para reposicionar
-painéis e ajustar cores, opacidade e visibilidade — tudo persistido em
-`%APPDATA%/forza-hud-native/`.
+### 3. Turn on telemetry in the game
 
-## Limite de giro por carro (redline learning)
+**Settings → HUD and Gameplay → Data Out**
 
-O aviso de troca não usa limiar fixo: `forza/revlimit.rs` aprende, por carro,
-onde o **limitador corta** (platô de RPM com acelerador cravado — e o giro
-precisa ter *subido* até o platô: overrev de reduzida forte entra por cima e
-não conta) e a **curva de potência** + a queda de RPM dos upshifts — o ponto de troca recomendado é o
-maior RPM em que segurar a marcha ainda rende mais potência do que a próxima
-renderia. Na barra de RPM: tick branco = troca recomendada; banda/tick
-vermelhos = zona até o corte (aparecem quando o limitador já foi observado).
-O flash do cluster (`near`) dispara nesse ponto aprendido.
+| Setting | Value |
+| ------- | ----- |
+| Data Out | On |
+| IP address | `127.0.0.1` |
+| Port | `20066` |
 
-A calibração persiste em `%APPDATA%/forza-hud-native/rev-limits.json` por
-`car_ordinal` — trocar de carro e voltar mantém o aprendizado; upgrade/swap de
-motor (muda `engine_max_rpm`) recalibra do zero. Enquanto não há dados, vale o
-default de 92% do fundo de escala.
+Some titles call this "Telemetry Output". See
+[game configuration](docs/getting_started/game_configuration.md).
 
-## Status
+### 4. Drive
 
-- [x] Núcleo UDP/parse + overlay nativo Direct2D (cluster RPM/marcha/velocidade/
-      pedais, pneus, força-G do piloto, perfil de elevação da volta; suavização em
-      Rust).
-- [x] Build portable (`installer/build-portable.ps1` — zip do .exe, sem instalador).
-- [ ] Atalhos globais completos, multi-monitor, gravação de sessão.
-- [ ] Telas fora do jogo (configuração e login/licença).
+The HUD appears within a second of moving. Nothing shows up in menus — that is
+deliberate.
 
-## Lançamento inicial — mapeamento de pista desligado
+| Shortcut | Action |
+| -------- | ------ |
+| **Ctrl + Alt + E** | Edit mode: drag, resize, change colours |
+| **Ctrl + Alt + H** | Hide or show |
+| **Ctrl + Alt + Q** | Quit |
 
-O **HUD in-game** (RPM, marcha, velocidade, pedais, força-G, perfil de elevação da
-volta) está no escopo do lançamento. A **telemetria de mapeamento de pista** —
-gravador `WorldMapRecorder`, live API em `:9877`, autosave e upload para a
-plataforma — está **desligada por enquanto** (`forza::TRACK_MAPPING_ENABLED = false`
-em `src-tauri/src/forza/mod.rs`).
+Veloryft also sits in the system tray, usually under the hidden-icons arrow.
 
-Motivo: o produto ainda está tomando forma; priorizamos entregar o overlay estável
-antes de expor viewer 3D, back e persistência de pistas. Para reativar, mude a
-constante para `true` e recompile.
+### Uninstalling
 
-## Documentação
+Settings → Apps → Veloryft → Uninstall, or delete the portable folder.
 
-A documentação completa do projeto está organizada em [`docs/`](docs/INDEX.md):
+**Your settings are kept**, so reinstalling restores your layout and everything
+Veloryft learned about your cars. To remove them too:
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [INICIO.md](docs/INICIO.md) | Requisitos, instalação e primeiro run. |
-| [ARQUITETURA.md](docs/ARQUITETURA.md) | Arquitetura da plataforma Veloryft. |
-| [ESTRUTURA.md](docs/ESTRUTURA.md) | Organização de pastas e módulos. |
-| [TECNOLOGIAS.md](docs/TECNOLOGIAS.md) | Stack tecnológico e crates. |
-| [INTERFACE.md](docs/INTERFACE.md) | Guia dos painéis, atalhos e modo de edição. |
-| [DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md) | Guia do desenvolvedor. |
-| [DISTRIBUICAO.md](docs/DISTRIBUICAO.md) | Build e instalador Windows. |
-| [LICENCA.md](docs/LICENCA.md) | Provisionamento e fluxo de licenças. |
-| [SEGURANCA.md](docs/SEGURANCA.md) | Modelo de segurança e boas práticas. |
-| [REFERENCIAS.md](docs/REFERENCIAS.md) | Links e documentações úteis. |
+```powershell
+Remove-Item -Recurse "$env:APPDATA\forza-hud-native"
+```
 
-## Notas
+### Something is wrong
 
-- `.cargo/config.toml` desliga a checagem de revogação de certificado do schannel
-  (`CRYPT_E_NO_REVOCATION_CHECK`) que trava o download de crates em algumas redes.
-- A crate `windows` está fixada em `0.61` para um grafo único de `windows_core`.
-- A porta UDP padrão (20066) é a mesma do backend Python original.
+[Troubleshooting](docs/getting_started/troubleshooting.md) covers the common
+cases — the HUD not appearing (usually Data Out), panels off-screen after a
+resolution change, shortcuts taken by another program.
+
+Logs are at `%APPDATA%\forza-hud-native\logs\veloryft.log`.
+
+---
+
+## For contributors
+
+### Build it
+
+Clone this repository and nothing else. There are no private dependencies and no
+tokens.
+
+```bash
+git clone https://github.com/ESousa97/veloryft-hud
+cd veloryft-hud
+cargo build --release
+```
+
+You need 64-bit Windows, Rust with the MSVC toolchain, and the Visual Studio
+Build Tools C++ workload.
+
+### Work on it without owning Forza
+
+```bash
+cargo run
+```
+
+```bash
+cargo run --example synthetic_telemetry
+```
+
+The HUD appears within a second, showing a car working through the gears around
+a closed loop. `--format sled|dash|fh6` exercises each wire format; `--idle`
+checks that the HUD correctly hides itself.
+
+### Before you push
+
+```bash
+cargo fmt --all -- --check
+```
+
+```bash
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+```bash
+cargo test --workspace --all-features
+```
+
+That is exactly what CI runs. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) — particularly the rules for the render hot
+path, which is not ordinary code.
+
+---
+
+## How it works
+
+```
+Forza  ──UDP──▶  parse  ──▶  lock-free snapshot  ──▶  Direct2D  ──▶  layered window
+```
+
+Each panel is its own small `WS_EX_LAYERED | WS_EX_TRANSPARENT` window. Direct2D
+renders into a premultiplied DIB, and `UpdateLayeredWindow` hands it to the
+compositor — per-pixel alpha on the GPU, and clicks that cross the process
+boundary into the game. A fullscreen transparent surface judders; this does not.
+See [ADR 0001](docs/decisions/adr_0001_native_direct2d_overlay.md).
+
+The throttle bar has its own surface and its own high-priority thread at 125 Hz,
+because it is the fastest-changing thing on screen and the one a driver reacts
+to. Under compositor pressure the auxiliary panels slow down; the cluster never
+does.
+
+```
+veloryft-hud/
+├── src/
+│   ├── application/     startup and the authorization boundary
+│   ├── telemetry/       UDP, decoding, the domain model, derived state
+│   ├── overlay/         Win32 and Direct2D presentation
+│   └── track_mapping/   optional, off by default
+├── crates/veloryft_protocol/   contract shared with the backend
+├── tests/  examples/  data/  assets/  installer/  scripts/  docs/
+```
+
+More: [system overview](docs/architecture/system_overview.md) ·
+[repository structure](docs/architecture/repository_structure.md)
+
+## Documentation
+
+Everything is in [`docs/`](docs/README.md) — user guides, architecture,
+development, distribution, security, and the decision records.
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
+prerequisites, what CI checks, and the constraints on hot-path and `unsafe` code.
+
+Need help? [SUPPORT.md](SUPPORT.md).
+
+## Security
+
+Report vulnerabilities **privately**, never in a public issue. See
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache-2.0](LICENSE). Third-party components are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The **Veloryft** name and logo are trademarks and are not covered by that
+license — fork freely, but rename your build. See
+[TRADEMARKS.md](TRADEMARKS.md).
+
+## Not affiliated with anyone
+
+"Forza", "Forza Horizon", "Forza Motorsport", "Xbox" and "Microsoft" are
+trademarks of Microsoft Corporation. "Turn 10 Studios" and "Playground Games"
+are names of their respective owners.
+
+**Veloryft is not affiliated with, sponsored by, or endorsed by any of them.**
+It reads only the telemetry the game itself broadcasts when you enable it. It
+does not modify the game, read its memory, or inject code.
