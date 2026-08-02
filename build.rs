@@ -28,7 +28,10 @@ fn main() {
     resource.set("ProductName", "Veloryft");
     resource.set("FileDescription", "Veloryft — Forza telemetry overlay");
     resource.set("CompanyName", "Veloryft");
-    resource.set("LegalCopyright", "\u{a9} 2026 Veloryft. All rights reserved.");
+    resource.set(
+        "LegalCopyright",
+        "\u{a9} 2026 Veloryft. All rights reserved.",
+    );
     resource.set("InternalName", "veloryft");
     resource.set("OriginalFilename", "Veloryft.exe");
     resource.set("ProductVersion", &resource_version);

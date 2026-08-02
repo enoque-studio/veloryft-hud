@@ -47,12 +47,19 @@ fn load() -> HashMap<i32, String> {
     for path in candidate_paths() {
         match load_file(&path) {
             Ok(catalog) if !catalog.is_empty() => {
-                log_info!("vehicle catalog: {} cars from {}", catalog.len(), path.display());
+                log_info!(
+                    "vehicle catalog: {} cars from {}",
+                    catalog.len(),
+                    path.display()
+                );
                 return catalog;
             }
             Ok(_) => log_warn!("vehicle catalog: {} is empty, ignoring", path.display()),
             Err(cause) if cause.kind() != std::io::ErrorKind::NotFound => {
-                log_warn!("vehicle catalog: {} could not be read: {cause}", path.display());
+                log_warn!(
+                    "vehicle catalog: {} could not be read: {cause}",
+                    path.display()
+                );
             }
             Err(_) => {}
         }
@@ -60,7 +67,10 @@ fn load() -> HashMap<i32, String> {
 
     match parse(EMBEDDED_CATALOG) {
         Ok(catalog) if !catalog.is_empty() => {
-            log_info!("vehicle catalog: {} cars from the embedded copy", catalog.len());
+            log_info!(
+                "vehicle catalog: {} cars from the embedded copy",
+                catalog.len()
+            );
             catalog
         }
         _ => {

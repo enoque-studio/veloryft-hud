@@ -3,8 +3,8 @@
 
 use serde::Serialize;
 
-use super::vehicle_catalog;
 use super::packet::Packet;
+use super::vehicle_catalog;
 
 #[derive(Serialize, Clone, Default)]
 pub struct Telemetry {

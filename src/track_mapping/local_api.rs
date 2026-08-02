@@ -123,10 +123,7 @@ fn live_port() -> u16 {
 }
 
 /// Starts the loopback HTTP server on a dedicated thread.
-pub fn spawn(
-    rec: Arc<Mutex<WorldMapRecorder>>,
-    persist_path: PathBuf,
-) -> thread::JoinHandle<()> {
+pub fn spawn(rec: Arc<Mutex<WorldMapRecorder>>, persist_path: PathBuf) -> thread::JoinHandle<()> {
     let port = live_port();
     thread::Builder::new()
         .name("worldmap-live-api".into())
@@ -201,7 +198,10 @@ pub fn spawn(
                                     let dto = rec.lock().unwrap().to_path_delta(r.epoch, &have);
                                     match serde_json::to_string(&dto) {
                                         Ok(json) => json_response(200, &json),
-                                        Err(_) => json_response(500, r#"{"error":"serialization failed"}"#),
+                                        Err(_) => json_response(
+                                            500,
+                                            r#"{"error":"serialization failed"}"#,
+                                        ),
                                     }
                                 }
                                 Ok(_) => json_response(413, r#"{"error":"too many segments"}"#),

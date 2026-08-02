@@ -38,8 +38,7 @@ impl TireTracker {
         let Some(temps) = tires else {
             return;
         };
-        for i in 0..4 {
-            let v = temps[i];
+        for (i, &v) in temps.iter().enumerate() {
             if !v.is_finite() || v <= 0.0 || v > MAX_VALID_TEMP {
                 continue;
             }
@@ -74,6 +73,9 @@ pub fn temp_color(temp: f32) -> (f32, f32, f32, f32) {
     } else if temp < 245.0 {
         (0.890, 0.702, 0.255, 0.94)
     } else {
+        // RGBA channels, not a mathematical constant: 0.318 is a red tone that
+        // happens to sit near 1/pi.
+        #[allow(clippy::approx_constant)]
         (0.973, 0.318, 0.286, 0.96)
     }
 }

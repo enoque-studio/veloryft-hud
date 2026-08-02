@@ -672,10 +672,9 @@ mod tests {
         // Reduz p/ 2ª e o TCS segura o giro em 7000 (87,5%) patinando: sobe
         // DEPOIS do blackout (8 amostras = 400 ms em 6000) e fica flat por
         // >1 s — sem o gate de slip isso substituiria o corte bom por 7000.
-        let spin: Vec<Telemetry> = std::iter::repeat(6000.0)
-            .take(8)
+        let spin: Vec<Telemetry> = std::iter::repeat_n(6000.0, 8)
             .chain([6500.0, 6800.0])
-            .chain(std::iter::repeat(7000.0).take(22))
+            .chain(std::iter::repeat_n(7000.0, 22))
             .map(|r| {
                 let mut s = snap(r, 2, 100.0);
                 s.slip = [1.8, 1.8, 2.4, 2.4];

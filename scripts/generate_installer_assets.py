@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""Generate light and dark installer branding assets from docs/ artwork."""
+"""Generate the light and dark installer artwork from assets/brand.
+
+Inputs:  assets/brand/veloryft_logo.png, assets/brand/veloryft_mono.png
+Outputs: installer/assets/*.bmp, installer/assets/veloryft.ico, veloryft-256.png
+
+Requires Pillow:  pip install pillow
+"""
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DOCS = os.path.normpath(os.path.join(HERE, "..", "..", "docs"))
+REPOSITORY = os.path.normpath(os.path.join(HERE, ".."))
+# Brand source artwork (inputs) and generated installer artwork (outputs) are
+# kept apart on purpose: everything under OUT is reproducible from BRAND.
+BRAND = os.path.join(REPOSITORY, "assets", "brand")
+OUT = os.path.join(REPOSITORY, "installer", "assets")
 
 BLUE = (24, 112, 255)          # acento da marca, levemente vibrante p/ fundo escuro
 BG_TOP = (12, 18, 30)
@@ -67,13 +77,13 @@ def rounded_mask(size, radius):
 
 def load_mark():
     """Símbolo 'V' recolorido (branco+azul), recortado no conteúdo."""
-    mark = keyed(Image.open(os.path.join(DOCS, "veloryft_logo.png")))
+    mark = keyed(Image.open(os.path.join(BRAND, "veloryft_logo.png")))
     return mark.crop(mark.getbbox())
 
 
 def load_wordmark():
     """Wordmark 'Veloryft' (só o texto, sem o símbolo), branco, recortado."""
-    full = keyed(Image.open(os.path.join(DOCS, "veloryft_mono.png")))
+    full = keyed(Image.open(os.path.join(BRAND, "veloryft_mono.png")))
     bbox = full.getbbox()
     full = full.crop(bbox)
     w, h = full.size
@@ -134,10 +144,10 @@ def make_icon(mark):
     tile.paste(m, (mx, my), m)
 
     tile.putalpha(rounded_mask((S, S), int(S * 0.18)))
-    out = os.path.join(HERE, "veloryft.ico")
+    out = os.path.join(OUT, "veloryft.ico")
     tile.save(out, sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
     print("ok:", out)
-    tile.resize((256, 256), Image.LANCZOS).save(os.path.join(HERE, "veloryft-256.png"))
+    tile.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, "veloryft-256.png"))
 
 # --- banners do wizard -----------------------------------------------------
 
@@ -186,7 +196,7 @@ def make_wizard_large(mark, word, scale):
     d.text(((W - fw) / 2, H - 22 * scale), foot, font=f_foot, fill=(90, 105, 130))
 
     suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(HERE, f"wizard-large{suffix}.bmp")
+    out = os.path.join(OUT, f"wizard-large{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -200,7 +210,7 @@ def make_wizard_small(mark, scale):
     m = fit(mark, int(W * 0.72), int(H * 0.72))
     img.paste(m, ((W - m.size[0]) // 2, (H - m.size[1]) // 2), m)
     suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(HERE, f"wizard-small{suffix}.bmp")
+    out = os.path.join(OUT, f"wizard-small{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -243,7 +253,7 @@ def make_wizard_large_light(mark, word, scale):
     d.text(((W - fw) / 2, H - 22 * scale), foot, font=f_foot, fill=(78, 101, 137))
 
     suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(HERE, f"wizard-large-light{suffix}.bmp")
+    out = os.path.join(OUT, f"wizard-large-light{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -259,7 +269,7 @@ def make_wizard_small_light(mark, scale):
     m = fit(tint_for_light_surface(mark), int(W * 0.72), int(H * 0.72))
     img.paste(m, ((W - m.size[0]) // 2, (H - m.size[1]) // 2), m)
     suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(HERE, f"wizard-small-light{suffix}.bmp")
+    out = os.path.join(OUT, f"wizard-small-light{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -357,7 +367,7 @@ def make_theme_page_bg(mark, word, scale):
     img.paste(hero, (hero_x0 + 8 * scale, hero_y0 + 8 * scale), hero)
 
     suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(HERE, f"theme-page-bg{suffix}.bmp")
+    out = os.path.join(OUT, f"theme-page-bg{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 

@@ -31,14 +31,14 @@ use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows_numerics::{Matrix3x2, Vector2};
 
-use crate::telemetry::display::{self, DisplayFrame, DisplaySmoother, PanelKind};
-use crate::telemetry::elevation::ElevationProfile;
-use crate::telemetry::snapshot::Shared;
-use crate::telemetry::tire_temperature::temp_color;
-use crate::telemetry::receiver;
-use crate::telemetry::visibility;
 use crate::diagnostics::{log_error, log_info, log_warn};
 use crate::overlay::track_recording::TrackRecording;
+use crate::telemetry::display::{self, DisplayFrame, DisplaySmoother, PanelKind};
+use crate::telemetry::elevation::ElevationProfile;
+use crate::telemetry::receiver;
+use crate::telemetry::snapshot::Shared;
+use crate::telemetry::tire_temperature::temp_color;
+use crate::telemetry::visibility;
 
 /// Forza's default "Data Out" port, and the value the documentation tells users
 /// to type into the game. Overridable with [`UDP_PORT_VAR`].
@@ -1021,6 +1021,9 @@ struct Panel {
 }
 
 impl Panel {
+    // Window creation genuinely needs every one of these; bundling them into a
+    // builder would only move the same list one call further away.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         kind: Kind,
         class: PCWSTR,
@@ -1367,6 +1370,9 @@ impl Panel {
         self.pedal_row_right("BRAKE", f.brake, &self.b.brake, py(CL_BRAKE_Y), w);
     }
 
+    // Drawing primitive: geometry plus the values it renders. Called per frame,
+    // so the arguments stay by value rather than behind a struct reference.
+    #[allow(clippy::too_many_arguments)]
     fn draw_tire_range(
         &self,
         x: f32,
@@ -2247,7 +2253,9 @@ fn spawn_critical_throttle(
                 let next_placement = *placement.lock().unwrap_or_else(|p| p.into_inner());
                 if let Err(e) = surface.sync_placement(next_placement) {
                     if THROTTLE_PLACEMENT_FAILED.first() {
-                        log_error!("critical throttle: placement failed: {e:?} (repeats suppressed)");
+                        log_error!(
+                            "critical throttle: placement failed: {e:?} (repeats suppressed)"
+                        );
                     }
                 }
                 let visible = !HUD_HIDDEN.load(Ordering::Relaxed)
@@ -3518,7 +3526,10 @@ pub fn run() -> Result<()> {
             Some(instance),
             None,
         )?;
-        let tray_icon = match LoadIconW(Some(instance), PCWSTR(1_usize as *const u16)) {
+        // MAKEINTRESOURCE(1): the icon embedded by build.rs. The Win32 API reads
+        // this as an ordinal, never dereferences it, so it is not a real pointer.
+        let icon_ordinal = PCWSTR(std::ptr::without_provenance(1));
+        let tray_icon = match LoadIconW(Some(instance), icon_ordinal) {
             Ok(icon) => icon,
             Err(e) => {
                 log_warn!("tray: LoadIconW failed, falling back to no icon: {e:?}");

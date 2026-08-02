@@ -92,7 +92,11 @@ fn rotate_if_oversized(dir: &std::path::Path) {
 /// Reads the configured level and opens the log file. Safe to call more than
 /// once; only the first call has an effect on the file handle.
 pub fn init() {
-    if let Some(level) = std::env::var(LOG_LEVEL_VAR).ok().as_deref().and_then(Level::parse) {
+    if let Some(level) = std::env::var(LOG_LEVEL_VAR)
+        .ok()
+        .as_deref()
+        .and_then(Level::parse)
+    {
         MIN_LEVEL.store(level as u8, Ordering::Relaxed);
     }
     let _ = log_file();
@@ -175,7 +179,10 @@ pub(crate) use {log_error, log_info, log_warn};
 /// `summary` is one plain sentence with the suggested fix; `detail` is the
 /// technical cause and also goes to the log. Falls back to stderr off Windows.
 pub fn report_startup_failure(summary: &str, detail: &fmt::Arguments<'_>) {
-    record(Level::Error, &format_args!("startup failed: {summary} ({detail})"));
+    record(
+        Level::Error,
+        &format_args!("startup failed: {summary} ({detail})"),
+    );
 
     #[cfg(windows)]
     {
@@ -231,10 +238,8 @@ mod tests {
 
     #[test]
     fn rotation_only_triggers_past_the_size_budget() {
-        let dir = std::env::temp_dir().join(format!(
-            "veloryft-log-rotation-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("veloryft-log-rotation-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 

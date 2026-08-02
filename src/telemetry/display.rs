@@ -144,6 +144,9 @@ impl DisplaySmoother {
         &self.frame
     }
 
+    // One scalar per smoothed channel. Grouping them into a struct would add a
+    // copy on a path that runs every frame, for no readability gain.
+    #[allow(clippy::too_many_arguments)]
     fn reset_to(
         &mut self,
         t_rpm: f32,
@@ -257,8 +260,8 @@ impl DisplaySmoother {
         self.d_speed = exp_smooth(self.d_speed, t_speed, dt, TAU_TEXT);
         self.d_lat = exp_smooth(self.d_lat, t_lat, dt, TAU_BAR);
         self.d_long = exp_smooth(self.d_long, t_long, dt, TAU_BAR);
-        for i in 0..4 {
-            self.d_slip[i] = exp_smooth(self.d_slip[i], t_slip[i], dt, TAU_BAR);
+        for (displayed, &target) in self.d_slip.iter_mut().zip(t_slip.iter()) {
+            *displayed = exp_smooth(*displayed, target, dt, TAU_BAR);
         }
         self.d_power = exp_smooth(
             self.d_power,
@@ -294,8 +297,8 @@ impl DisplaySmoother {
         animating |= (self.d_speed - t_speed).abs() > ANIM_SPEED;
         animating |= (self.d_lat - t_lat).abs() > ANIM_G;
         animating |= (self.d_long - t_long).abs() > ANIM_G;
-        for i in 0..4 {
-            animating |= (self.d_slip[i] - t_slip[i]).abs() > ANIM_G;
+        for (displayed, &target) in self.d_slip.iter().zip(t_slip.iter()) {
+            animating |= (displayed - target).abs() > ANIM_G;
         }
         animating |= (self.d_elev - elev_target).abs() > ANIM_SPEED;
 

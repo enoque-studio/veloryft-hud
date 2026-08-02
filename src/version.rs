@@ -46,7 +46,10 @@ mod tests {
 
     #[test]
     fn final_releases_get_a_zero_build_component() {
-        assert_eq!(windows_resource_version("0.2.0").as_deref(), Some("0.2.0.0"));
+        assert_eq!(
+            windows_resource_version("0.2.0").as_deref(),
+            Some("0.2.0.0")
+        );
         assert_eq!(
             windows_resource_version("12.34.56").as_deref(),
             Some("12.34.56.0")

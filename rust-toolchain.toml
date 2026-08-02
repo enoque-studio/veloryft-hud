@@ -1,0 +1,7 @@
+# Pins the toolchain contributors and CI use, so `cargo fmt` and `cargo clippy`
+# agree everywhere. The minimum supported Rust version is declared separately as
+# `rust-version` in Cargo.toml (1.85) and is verified by its own CI job.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc"]
