@@ -1,9 +1,14 @@
 ﻿END USER LICENSE AGREEMENT (EULA)
 Veloryft — Free Beta Version
 
-Document version: 1.0 — July 2, 2026
+Document version: 1.1 — DRAFT, PENDING LEGAL REVIEW
 
 IMPORTANT: READ BEFORE INSTALLING OR USING.
+
+NOTE TO REVIEWERS: this document has not yet been reviewed by a lawyer. It was
+revised to remove clauses that conflicted with the Apache-2.0 license now
+applied to the source code. It must not be described as final until that review
+has happened. See docs/legal/licensing_decision.md.
 
 This End User License Agreement ("Agreement") is a legal agreement between you
 ("User") and Veloryft ("Licensor") regarding the "Veloryft" application in its
@@ -31,24 +36,41 @@ continuity, support, or future availability.
 
 2. LICENSE GRANT
 
-2.1. Subject to the terms of this Agreement, the Licensor grants you a FREE,
-personal, non-exclusive, non-transferable, and REVOCABLE license to install and
-use the Software on computers you own or control, solely for personal,
-non-commercial purposes.
+2.1. The SOURCE CODE of the Software is published under the Apache License,
+Version 2.0 ("Apache-2.0"), available at
+https://github.com/ESousa97/veloryft-hud. Nothing in this Agreement limits,
+reduces, or conditions any right granted to you by Apache-2.0 in respect of that
+source code, including the rights to use, modify, and redistribute it, for any
+purpose including commercial purposes. Where this Agreement and Apache-2.0
+conflict as to the source code, Apache-2.0 prevails.
 
-2.2. This license does not constitute a sale. The Licensor retains all rights
-not expressly granted.
+2.2. This Agreement governs the OFFICIAL PREBUILT BINARY distributed by the
+Licensor (the installer and the portable package). Subject to the terms of this
+Agreement, the Licensor grants you a free, non-exclusive license to install and
+use that binary on computers you own or control.
+
+2.3. You may also build the Software yourself from its published source code
+under Apache-2.0, and distribute the result under Apache-2.0, subject only to
+the trademark terms in clause 3.
 
 
 3. RESTRICTIONS
 
-3.1. You may NOT, except to the extent permitted by mandatory law:
-   a) sell, rent, sublicense, lend, or distribute the Software for a fee;
-   b) reverse engineer, decompile, or disassemble the Software, except where
-      expressly permitted by law;
-   c) remove or alter ownership notices, trademarks, or Licensor identification;
-   d) use the Software for any unlawful purpose or in violation of third-party
-      rights.
+3.1. This Agreement grants no rights in the Licensor's trademarks. The name
+"Veloryft" and the Veloryft logo are not licensed under Apache-2.0 and are not
+licensed by this Agreement. If you distribute a modified build, you must not
+present it under the Veloryft name or logo. See TRADEMARKS.md in the repository.
+
+3.2. You may not remove or alter copyright notices, attribution, or license
+notices required by Apache-2.0 or by the third-party components listed in
+THIRD_PARTY_NOTICES.md.
+
+3.3. You may not use the Software for any unlawful purpose or in violation of
+third-party rights.
+
+3.4. For the avoidance of doubt: this Agreement does NOT prohibit reverse
+engineering, redistribution, sale, or commercial use of the Software, because
+the source code is licensed under Apache-2.0 and those rights are granted there.
 
 
 4. GAME TELEMETRY AND THIRD-PARTY TRADEMARK DISCLAIMER
@@ -125,9 +147,10 @@ updates, modify, suspend, or discontinue the Software, in whole or in part.
 9.1. This Agreement remains in effect for as long as the User uses the
 Software.
 
-9.2. The license will terminate automatically if the User breaches any clause
-of this Agreement. Upon termination, the User must stop using and uninstall the
-Software.
+9.2. If the User breaches this Agreement, the license granted here for the
+official prebuilt binary terminates, and the User must stop using and uninstall
+that binary. This does not affect any right the User holds under Apache-2.0 in
+respect of the source code, which is governed by that license alone.
 
 
 10. CHANGES TO THIS AGREEMENT
@@ -146,8 +169,11 @@ that may apply.
 
 12. CONTACT
 
-Questions about this Agreement or the Software may be directed to Veloryft's
-official contact channel.
+Questions about this Agreement or the Software may be raised on the project's
+GitHub repository: https://github.com/ESousa97/veloryft-hud
+
+Security vulnerabilities must NOT be reported publicly. Use the private
+reporting channel described in SECURITY.md.
 
 By proceeding with installation, you confirm that you have read and agree to
 this Agreement.

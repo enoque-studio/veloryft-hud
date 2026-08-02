@@ -1,0 +1,112 @@
+name: Bug report
+description: Something in Veloryft does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+
+        **Two things first**, because they cover most reports:
+
+        - The HUD hides itself in menus, pause screens and replays. That is
+          deliberate. Press **Ctrl+Alt+E** to force it visible and confirm it is
+          running.
+        - If it never appears at all, check Data Out in the game: on, IP
+          `127.0.0.1`, port `20066`.
+
+        For a security vulnerability, do **not** use this form — see
+        [SECURITY.md](https://github.com/ESousa97/veloryft-hud/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Veloryft
+        2. Start Forza Horizon 6 and begin driving
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Veloryft version
+      description: From the installer file name, or right-click the .exe → Properties → Details.
+      placeholder: 0.2.0-beta.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it
+      options:
+        - Installer
+        - Portable zip
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Press Win+R, type winver, and copy the version line.
+      placeholder: Windows 11 Pro 24H2 (build 26100)
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: Forza Horizon 6
+    validations:
+      required: true
+
+  - type: dropdown
+    id: monitors
+    attributes:
+      label: Monitors
+      options:
+        - One
+        - More than one
+        - More than one, with different scaling
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        The relevant part of `%APPDATA%\forza-hud-native\logs\veloryft.log`.
+
+        **Read it before pasting.** It is written to avoid personal data, but a
+        file path can still contain your name — redact anything you would not
+        post publicly.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am on the latest release
+          required: true
+        - label: I checked the [troubleshooting guide](https://github.com/ESousa97/veloryft-hud/blob/main/docs/getting_started/troubleshooting.md)
+          required: true
+        - label: I searched existing issues
+          required: true
+        - label: This is not a security vulnerability
+          required: true

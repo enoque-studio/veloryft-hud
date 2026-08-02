@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # Cargo. Grouped so that a routine bump is one pull request to review rather
+  # than fifteen, with security fixes kept separate so they are never buried.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    labels: [dependencies, rust]
+    groups:
+      windows-crates:
+        # The windows-rs family must move together: mixed versions produce two
+        # copies of the same Win32 bindings in one binary.
+        patterns:
+          - windows
+          - windows-*
+      minor-and-patch:
+        update-types: [minor, patch]
+        exclude-patterns:
+          - windows
+          - windows-*
+
+  # GitHub Actions are pinned to commit SHAs, so nothing updates them unless
+  # Dependabot does. That is the trade for not trusting a mutable tag.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    labels: [dependencies, github-actions]
+    groups:
+      actions:
+        patterns: ["*"]

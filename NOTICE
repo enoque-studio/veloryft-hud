@@ -1,0 +1,19 @@
+Veloryft
+Copyright 2026 Enoque Sousa
+
+This product includes software developed as part of the Veloryft project
+(https://github.com/ESousa97/veloryft-hud).
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy of the
+License in the LICENSE file at the root of this repository, or at
+http://www.apache.org/licenses/LICENSE-2.0.
+
+Third-party components redistributed in the compiled binary are listed in
+THIRD_PARTY_NOTICES.md, together with their licenses.
+
+"Veloryft" and the Veloryft logo are trademarks of the project owner. The
+Apache License does not grant permission to use them. See TRADEMARKS.md.
+
+Veloryft is not affiliated with, sponsored by, or endorsed by Microsoft
+Corporation, Turn 10 Studios, Playground Games, or the owners of the Forza
+trademarks.

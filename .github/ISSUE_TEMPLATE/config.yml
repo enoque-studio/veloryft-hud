@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ESousa97/veloryft-hud/security/advisories/new
+    about: Report privately through GitHub Security Advisories. Never in a public issue.
+  - name: Setup help and troubleshooting
+    url: https://github.com/ESousa97/veloryft-hud/blob/main/docs/getting_started/troubleshooting.md
+    about: The HUD not appearing is almost always a Data Out setting. Start here.
+  - name: Contributing
+    url: https://github.com/ESousa97/veloryft-hud/blob/main/CONTRIBUTING.md
+    about: Building from source, running the tests, and the rules for hot-path code.
