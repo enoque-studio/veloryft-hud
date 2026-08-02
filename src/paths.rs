@@ -18,7 +18,7 @@ pub fn config_dir() -> PathBuf {
     PathBuf::from(base).join(CONFIG_DIR_NAME)
 }
 
-/// `%APPDATA%/forza-hud-native/logs` — see [`crate::application::diagnostics`].
+/// `%APPDATA%/forza-hud-native/logs` — see [`crate::diagnostics`].
 #[must_use]
 pub fn log_dir() -> PathBuf {
     config_dir().join("logs")

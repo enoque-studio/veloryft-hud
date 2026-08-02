@@ -22,23 +22,19 @@ version = 2
 # silent addition — see docs/development/dependency_management.md.
 allow = [
   "Apache-2.0",
-  "Apache-2.0 WITH LLVM-exception",
-  "BSD-2-Clause",
-  "BSD-3-Clause",
-  "ISC",
   "MIT",
-  "MIT-0",
   "Unicode-3.0",
-  "Zlib",
 ]
 confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# One windows-sys graph keeps the binary small and avoids two copies of the
-# same Win32 bindings.
-skip = []
+# windows-rs 0.61 still uses syn 2 while serde 1.0.229 has moved its derive
+# macro to syn 3. Both copies are build-time proc-macro dependencies, so they do
+# not add duplicate runtime code to the shipped executable. Remove this
+# exception once windows-rs moves to syn 3.
+skip = [{ name = "syn", version = "2" }]
 
 [sources]
 unknown-registry = "deny"

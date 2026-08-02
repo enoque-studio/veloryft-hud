@@ -18,8 +18,6 @@ pub mod packet;
 pub mod receiver;
 pub mod rev_limit;
 pub mod snapshot;
-/// Building Forza-shaped datagrams for tests and for the `synthetic_telemetry`
-/// example, so the overlay can be exercised without the game.
 pub mod synthetic;
 pub mod tire_temperature;
 pub mod vehicle_catalog;

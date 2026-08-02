@@ -20,6 +20,9 @@ env:
   CARGO_TERM_COLOR: always
   # A warning that only appears in CI is a warning nobody fixes.
   RUSTFLAGS: -D warnings
+  # RUSTFLAGS does not reach rustdoc, so broken intra-doc links need their own
+  # setting or cargo doc reports them and exits zero.
+  RUSTDOCFLAGS: -D warnings
 
 jobs:
   # Formatting and documentation are platform-independent, so they run on the
@@ -132,4 +135,3 @@ jobs:
           # licenses:   the allowed set in deny.toml
           # sources:    crates.io only, which is what keeps a private path or
           #             git dependency from creeping back in
-          arguments: --all-features
