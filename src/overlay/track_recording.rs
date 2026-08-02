@@ -69,7 +69,11 @@ mod implementation {
     use crate::telemetry::model::Telemetry;
 
     /// Stand-in used when the feature is compiled out. Never constructed.
-    #[derive(Clone, Copy)]
+    ///
+    /// Deliberately not `Copy`: the enabled implementation holds an `Arc`, and
+    /// the runtime clones the handle. Matching that here keeps the call site
+    /// identical under both feature settings.
+    #[derive(Clone)]
     pub struct TrackRecording;
 
     impl TrackRecording {
