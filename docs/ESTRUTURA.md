@@ -92,6 +92,8 @@ Maior arquivo do projeto (~1700 linhas). Responsável por:
 - Criar janelas `WS_EX_LAYERED | WS_EX_TRANSPARENT` para cada painel.
 - Inicializar fábricas Direct2D, DirectWrite e DXGI.
 - Loop de renderização a ~60 fps com dirty-skip e sleep adaptativo.
+- Priorização do cluster e degradação adaptativa dos painéis auxiliares conforme
+  a latência de apresentação; detalhes em [`RENDERIZACAO.md`](RENDERIZACAO.md).
 - Hotkeys globais: `Ctrl+Alt+Q`, `Ctrl+Alt+E`.
 - Modo de edição: malha de grade, drag-and-drop, resize, toolbar de customização.
 - Persistência de posição, tamanho, tema e visibilidade dos painéis.

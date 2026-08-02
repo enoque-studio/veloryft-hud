@@ -49,7 +49,9 @@ pwsh installer/build-installer.ps1
 ```
 
 Isso compila o release (`cargo build --release`) e depois o instalador (ISCC).
-Saída em `dist/Veloryft-Setup-0.1.0.0.exe`.
+O número vem do arquivo `VERSION`, sempre no formato `X.X.X.X`. Cada build
+publicável deve incrementar ao menos a revisão (último número) antes de gerar os
+artefatos. Exemplo de saída: `dist/Veloryft-Setup-0.1.0.1.exe`.
 
 Variações:
 
@@ -62,7 +64,8 @@ Passos manuais equivalentes:
 
 ```powershell
 cargo build --release --manifest-path src-tauri\Cargo.toml
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\veloryft.iss
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" `
+  /DMyAppVersion=0.1.0.1 installer\veloryft.iss
 ```
 
 ## O que o instalador faz
@@ -127,7 +130,7 @@ signtool sign /fd SHA256 /f $cert /p <senha> /tr $ts /td SHA256 `
 
 # 3) assinar o instalador gerado
 signtool sign /fd SHA256 /f $cert /p <senha> /tr $ts /td SHA256 `
-  dist\Veloryft-Setup-0.1.0.0.exe
+  dist\Veloryft-Setup-0.1.0.1.exe
 ```
 
 Inno Setup também suporta assinatura automática via `SignTool` (diretiva
@@ -147,8 +150,8 @@ desinstalador embutido de uma vez.
 
 ## Checklist de release
 
-1. Ajustar `MyAppVersion` no `veloryft.iss` **e** `version` no
-   `src-tauri/Cargo.toml` (manter em sincronia).
+1. Incrementar o arquivo `VERSION`. Essa é a fonte única para os metadados do
+   executável e para os nomes do instalador e do pacote portable.
 2. `pwsh installer/build-installer.ps1 -Assets`.
 3. Testar em uma VM limpa de Windows 10 e 11: instalar, abrir com o Forza, aceitar
    os termos, desinstalar.

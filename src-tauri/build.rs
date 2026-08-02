@@ -14,7 +14,13 @@ fn main() {
     println!("cargo:rerun-if-changed={icon}");
     println!("cargo:rerun-if-changed=build.rs");
 
-    let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+    println!("cargo:rerun-if-changed=../VERSION");
+    let version = include_str!("../VERSION").trim();
+    assert!(
+        version.split('.').count() == 4
+            && version.split('.').all(|part| part.parse::<u16>().is_ok()),
+        "VERSION deve usar quatro números: X.X.X.X"
+    );
 
     let mut res = winresource::WindowsResource::new();
     res.set_icon(icon);
@@ -30,9 +36,8 @@ fn main() {
     );
     res.set("InternalName", "forza-hud-native");
     res.set("OriginalFilename", "Veloryft.exe");
-    let windows_version = format!("{version}.0");
-    res.set("ProductVersion", &windows_version);
-    res.set("FileVersion", &windows_version);
+    res.set("ProductVersion", version);
+    res.set("FileVersion", version);
     res.compile()
         .expect("falha ao embutir recursos do Windows (rc.exe do SDK)");
 }

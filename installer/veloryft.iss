@@ -5,7 +5,9 @@
 ; ============================================================================
 
 #define MyAppName "Veloryft"
-#define MyAppVersion "0.1.0.0"
+#ifndef MyAppVersion
+  #error MyAppVersion must be supplied by build-installer.ps1
+#endif
 #define MyAppPublisher "Veloryft"
 #define MyAppURL "https://veloryft.com"
 #define MyAppExeName "Veloryft.exe"

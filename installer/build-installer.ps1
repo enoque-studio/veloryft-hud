@@ -22,6 +22,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location $repo
+$version = (Get-Content -LiteralPath (Join-Path $repo 'VERSION') -Raw).Trim()
+if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+  throw "VERSION inválida: '$version' (esperado X.X.X.X)"
+}
 
 function Find-ISCC {
   $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -55,7 +59,7 @@ if (-not (Test-Path $exe)) { throw "binário não encontrado: $exe (rode sem -Sk
 
 $iscc = Find-ISCC
 Write-Host "==> Compilando instalador com $iscc" -ForegroundColor Cyan
-& $iscc "installer\veloryft.iss"
+& $iscc "/DMyAppVersion=$version" "installer\veloryft.iss"
 if ($LASTEXITCODE -ne 0) { throw "ISCC falhou ($LASTEXITCODE)" }
 
 $out = Get-ChildItem "dist\*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1

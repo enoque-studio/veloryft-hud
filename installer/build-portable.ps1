@@ -33,8 +33,10 @@ if (-not $SkipBuild) {
 $exe = "src-tauri\target\release\forza-hud-native.exe"
 if (-not (Test-Path $exe)) { throw "binário não encontrado: $exe (rode sem -SkipBuild)" }
 
-$version = (cargo metadata --no-deps --manifest-path src-tauri\Cargo.toml --format-version 1 |
-  ConvertFrom-Json).packages[0].version
+$version = (Get-Content -LiteralPath (Join-Path $repo 'VERSION') -Raw).Trim()
+if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+  throw "VERSION inválida: '$version' (esperado X.X.X.X)"
+}
 
 $stageDir = "dist\portable-stage"
 if (Test-Path $stageDir) { Remove-Item $stageDir -Recurse -Force }

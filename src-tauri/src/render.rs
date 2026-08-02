@@ -47,6 +47,8 @@ const MIN_SZ: i32 = 80;
 const MAGNET: i32 = 12;
 const FRAME_MIN_MS: u64 = 16;
 const IDLE_SLEEP_MS: u64 = 50;
+const PRESENT_SLOW_MS: f32 = 4.0;
+const PRESENT_SEVERE_MS: f32 = 9.0;
 
 // Ícone na bandeja do sistema (system tray).
 const WM_TRAYICON: u32 = WM_APP + 1;
@@ -453,12 +455,81 @@ fn toolbar_activate(hit: i32) {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
     Cluster,
     Tires,
     GForce,
     Elevation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RenderPressure {
+    Normal,
+    Elevated,
+    Severe,
+}
+
+/// Prioriza o cluster (RPM/pedais) e reduz somente a cadência dos painéis
+/// auxiliares quando o compositor começa a reter `UpdateLayeredWindow`.
+struct RenderGovernor {
+    last_present: [Instant; PANEL_COUNT],
+    present_ewma_ms: f32,
+    pressure: RenderPressure,
+}
+
+impl RenderGovernor {
+    fn new() -> Self {
+        let ready = Instant::now() - Duration::from_secs(1);
+        Self {
+            last_present: [ready; PANEL_COUNT],
+            present_ewma_ms: 0.0,
+            pressure: RenderPressure::Normal,
+        }
+    }
+
+    fn interval(&self, kind: Kind) -> Duration {
+        let ms = match (self.pressure, kind) {
+            (_, Kind::Cluster) => 0,
+            (RenderPressure::Normal, Kind::Tires | Kind::GForce) => 33,
+            (RenderPressure::Normal, Kind::Elevation) => 100,
+            (RenderPressure::Elevated, Kind::Tires | Kind::GForce) => 50,
+            (RenderPressure::Elevated, Kind::Elevation) => 250,
+            (RenderPressure::Severe, Kind::Tires | Kind::GForce) => 100,
+            (RenderPressure::Severe, Kind::Elevation) => 500,
+        };
+        Duration::from_millis(ms)
+    }
+
+    fn should_present(&self, kind: Kind, now: Instant, edit: bool) -> bool {
+        edit || kind == Kind::Cluster
+            || now.duration_since(self.last_present[kind.idx()]) >= self.interval(kind)
+    }
+
+    fn record(&mut self, kind: Kind, elapsed: Duration, now: Instant) {
+        self.last_present[kind.idx()] = now;
+        let sample_ms = elapsed.as_secs_f32() * 1000.0;
+        self.present_ewma_ms = if self.present_ewma_ms == 0.0 {
+            sample_ms
+        } else {
+            self.present_ewma_ms * 0.88 + sample_ms * 0.12
+        };
+        self.pressure = match self.pressure {
+            RenderPressure::Normal if self.present_ewma_ms >= PRESENT_SLOW_MS => {
+                RenderPressure::Elevated
+            }
+            RenderPressure::Elevated if self.present_ewma_ms >= PRESENT_SEVERE_MS => {
+                RenderPressure::Severe
+            }
+            RenderPressure::Elevated if self.present_ewma_ms < PRESENT_SLOW_MS * 0.65 => {
+                RenderPressure::Normal
+            }
+            RenderPressure::Severe if self.present_ewma_ms < PRESENT_SEVERE_MS * 0.65 => {
+                RenderPressure::Elevated
+            }
+            pressure => pressure,
+        };
+    }
 }
 
 impl Kind {
@@ -1750,7 +1821,7 @@ impl Panel {
         );
     }
 
-    /// Retorna `true` se desenhou (chamou `UpdateLayeredWindow`).
+    /// Retorna o tempo gasto no compositor quando apresentou um novo bitmap.
     fn draw(
         &self,
         f: &DisplayFrame,
@@ -1758,17 +1829,18 @@ impl Panel {
         edit: bool,
         accent: D2D1_COLOR_F,
         gear_accent: bool,
-    ) -> Result<bool> {
+        allow_present: bool,
+    ) -> Result<Option<Duration>> {
         if !self.enabled {
             self.set_shown(false);
             self.paint_key.set(0);
-            return Ok(false);
+            return Ok(None);
         }
         let visible = edit || f.alpha > 0.01;
         self.set_shown(visible);
         if !visible {
             self.paint_key.set(0);
-            return Ok(false);
+            return Ok(None);
         }
 
         let theme = THEME.get();
@@ -1782,8 +1854,13 @@ impl Panel {
             None
         };
         let key = display::panel_paint_key(self.kind.panel_kind(), f, edit, accent_bits, elev_opt);
-        if !edit && !f.animating && key == self.paint_key.get() {
-            return Ok(false);
+        // A animação é global, mas a chave é específica do painel. Um pedal
+        // animando no cluster não deve forçar pneus/G/elev a serem reenviados.
+        if !edit && key == self.paint_key.get() {
+            return Ok(None);
+        }
+        if !allow_present {
+            return Ok(None);
         }
         self.paint_key.set(key);
 
@@ -1843,8 +1920,9 @@ impl Panel {
         } else {
             (layer_alpha * 255.0).round() as u8
         };
+        let present_started = Instant::now();
         present(self.hwnd, self.memdc, self.pos, self.size, alpha)?;
-        Ok(true)
+        Ok(Some(present_started.elapsed()))
     }
 }
 
@@ -3049,6 +3127,7 @@ pub fn run() -> Result<()> {
         let toolbar = Toolbar::new(toolbar_class, instance, &factory, &fonts, sw)?;
 
         let mut smoother = DisplaySmoother::new();
+        let mut render_governor = RenderGovernor::new();
         let mut last_frame = Instant::now();
 
         let shared = Arc::new(Shared::new());
@@ -3197,13 +3276,18 @@ pub fn run() -> Result<()> {
             if edit {
                 sync_panel_visibility(&mut panels);
             }
+            let render_now = Instant::now();
             for p in panels.iter_mut() {
                 if edit {
                     sync_panel_geometry(p);
                 }
-                match p.draw(&fd, &elev, edit, accent, theme.gear_target) {
-                    Ok(true) => presented = true,
-                    Ok(false) => {}
+                let allow_present = render_governor.should_present(p.kind, render_now, edit);
+                match p.draw(&fd, &elev, edit, accent, theme.gear_target, allow_present) {
+                    Ok(Some(present_time)) => {
+                        presented = true;
+                        render_governor.record(p.kind, present_time, Instant::now());
+                    }
+                    Ok(None) => {}
                     Err(e) => eprintln!("[overlay] draw: {e:?}"),
                 }
             }
@@ -3225,5 +3309,46 @@ pub fn run() -> Result<()> {
                 thread::sleep(Duration::from_millis(FRAME_MIN_MS));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod render_governor_tests {
+    use super::*;
+
+    #[test]
+    fn cluster_critico_nunca_e_limitado() {
+        let governor = RenderGovernor::new();
+        let now = Instant::now();
+        assert!(governor.should_present(Kind::Cluster, now, false));
+    }
+
+    #[test]
+    fn pressao_reduz_cadencia_apenas_dos_paineis_auxiliares() {
+        let mut governor = RenderGovernor::new();
+        let now = Instant::now();
+        for _ in 0..32 {
+            governor.record(Kind::Cluster, Duration::from_millis(12), now);
+        }
+        assert_eq!(governor.pressure, RenderPressure::Severe);
+        assert_eq!(governor.interval(Kind::Cluster), Duration::ZERO);
+        assert_eq!(governor.interval(Kind::Tires), Duration::from_millis(100));
+        assert_eq!(
+            governor.interval(Kind::Elevation),
+            Duration::from_millis(500)
+        );
+    }
+
+    #[test]
+    fn governador_se_recupera_quando_o_compositor_desafoga() {
+        let mut governor = RenderGovernor::new();
+        let now = Instant::now();
+        for _ in 0..32 {
+            governor.record(Kind::Cluster, Duration::from_millis(12), now);
+        }
+        for _ in 0..80 {
+            governor.record(Kind::Cluster, Duration::from_micros(500), now);
+        }
+        assert_eq!(governor.pressure, RenderPressure::Normal);
     }
 }
