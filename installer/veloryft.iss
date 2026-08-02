@@ -5,13 +5,19 @@
 ; ============================================================================
 
 #define MyAppName "Veloryft"
+; Both are supplied by scripts\build_installer.ps1 from Cargo.toml:
+;   MyAppVersion     the SemVer string, shown to users and used in file names
+;   MyAppVersionInfo the four-component form Windows version resources require
 #ifndef MyAppVersion
-  #error MyAppVersion must be supplied by build-installer.ps1
+  #error MyAppVersion must be supplied by scripts\build_installer.ps1
+#endif
+#ifndef MyAppVersionInfo
+  #error MyAppVersionInfo must be supplied by scripts\build_installer.ps1
 #endif
 #define MyAppPublisher "Veloryft"
 #define MyAppURL "https://veloryft.com"
 #define MyAppExeName "Veloryft.exe"
-#define MyBuildExe "..\src-tauri\target\release\forza-hud-native.exe"
+#define MyBuildExe "..\target\release\veloryft.exe"
 ; Stable product GUID (do NOT change between versions — it's the identity used
 ; for updates/uninstall).
 #define MyAppId "{{A7F3C2E1-9B4D-4E6A-8C1F-2D5B7E0A9C34}"
@@ -28,9 +34,9 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 AppCopyright=Copyright (C) 2026 Veloryft
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersionInfo}
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersionInfo}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Setup
 
@@ -53,17 +59,17 @@ MinVersion=10.0
 WizardStyle=modern dynamic windows11 hidebevels
 WizardSizePercent=120
 DefaultDialogFontName=Segoe UI
-WizardImageFile=assets\wizard-large-light.bmp,assets\wizard-large-light@2x.bmp
-WizardImageFileDynamicDark=assets\wizard-large.bmp,assets\wizard-large@2x.bmp
-WizardSmallImageFile=assets\wizard-small-light.bmp,assets\wizard-small-light@2x.bmp
-WizardSmallImageFileDynamicDark=assets\wizard-small.bmp,assets\wizard-small@2x.bmp
+WizardImageFile=assets\wizard_large_light.bmp,assets\wizard_large_light_2x.bmp
+WizardImageFileDynamicDark=assets\wizard_large.bmp,assets\wizard_large_2x.bmp
+WizardSmallImageFile=assets\wizard_small_light.bmp,assets\wizard_small_light_2x.bmp
+WizardSmallImageFileDynamicDark=assets\wizard_small.bmp,assets\wizard_small_2x.bmp
 SetupIconFile=assets\veloryft.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 
-; License terms (mandatory acceptance) + post-install quick-start guide.
-LicenseFile=EULA.txt
-InfoAfterFile=README.txt
+; Post-install quick-start guide. Apache-2.0 is shipped as a notice rather than
+; a separate click-through contract.
+InfoAfterFile=readme.txt
 
 ; Packaging.
 Compression=lzma2/max
@@ -80,13 +86,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#MyBuildExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
-Source: "README.txt"; DestDir: "{app}"; DestName: "Read Me.txt"; Flags: ignoreversion isreadme
-Source: "EULA.txt"; DestDir: "{app}"; DestName: "License Agreement.txt"; Flags: ignoreversion
+Source: "readme.txt"; DestDir: "{app}"; DestName: "Read Me.txt"; Flags: ignoreversion isreadme
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\NOTICE"; DestDir: "{app}"; DestName: "NOTICE.txt"; Flags: ignoreversion
+Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; DestName: "THIRD_PARTY_NOTICES.md"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Read Me"; Filename: "{app}\Read Me.txt"
-Name: "{group}\License Agreement"; Filename: "{app}\License Agreement.txt"
+Name: "{group}\License"; Filename: "{app}\LICENSE.txt"
+Name: "{group}\Third-party notices"; Filename: "{app}\THIRD_PARTY_NOTICES.md"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
@@ -104,7 +113,11 @@ var
 begin
   Exec(ExpandConstant('{cmd}'), '/C taskkill /IM "{#MyAppExeName}" /F', '',
        SW_HIDE, ewWaitUntilTerminated, rc);
+  { The pre-0.2 development binary names. Harmless when absent; kept so that
+    upgrading from an older install never fails on a locked executable. }
   Exec(ExpandConstant('{cmd}'), '/C taskkill /IM "forza-hud-native.exe" /F', '',
+       SW_HIDE, ewWaitUntilTerminated, rc);
+  Exec(ExpandConstant('{cmd}'), '/C taskkill /IM "veloryft.exe" /F', '',
        SW_HIDE, ewWaitUntilTerminated, rc);
 end;
 

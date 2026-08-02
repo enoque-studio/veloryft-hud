@@ -1,0 +1,5 @@
+# Defaults everywhere else. Only stable options are set, so `cargo fmt` behaves
+# identically on the pinned stable toolchain and on nightly.
+edition = "2021"
+max_width = 100
+newline_style = "Unix"

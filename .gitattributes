@@ -1,0 +1,21 @@
+# Normalize to LF in the repository; Git checks out CRLF on Windows where the
+# file type calls for it. Without this the tree ends up with mixed endings,
+# because the packaging scripts and the Rust sources are edited on Windows.
+* text=auto eol=lf
+
+# Files Windows tools read directly, and that the installer ships verbatim.
+*.iss   text eol=crlf
+*.txt   text eol=crlf
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+
+# Binary assets: never normalized, never diffed as text.
+*.png   binary
+*.ico   binary
+*.bmp   binary
+*.pdf   binary
+*.zip   binary
+*.exe   binary
+
+# Generated: keep it out of pull-request diffs by default.
+Cargo.lock linguist-generated=true

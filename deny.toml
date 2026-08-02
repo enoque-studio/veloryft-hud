@@ -1,0 +1,44 @@
+# cargo-deny configuration — https://embarkstudios.github.io/cargo-deny/
+#
+# Run locally with:  cargo deny check
+# CI runs the same command; see .github/workflows/ci.yml.
+
+[graph]
+# Veloryft ships only for 64-bit Windows. Checking other targets would pull in
+# advisories and licenses for dependencies this project never builds.
+targets = [{ triple = "x86_64-pc-windows-msvc" }]
+all-features = true
+
+[advisories]
+version = 2
+# Fail on any unpatched advisory. Add an explicit, dated entry here if one ever
+# has to be tolerated, with the reason and the plan to remove it.
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licenses compatible with redistributing a Windows binary under
+# Apache-2.0. Anything outside this list needs a deliberate decision, not a
+# silent addition — see docs/development/dependency_management.md.
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# windows-rs 0.61 still uses syn 2 while serde 1.0.229 has moved its derive
+# macro to syn 3. Both copies are build-time proc-macro dependencies, so they do
+# not add duplicate runtime code to the shipped executable. Remove this
+# exception once windows-rs moves to syn 3.
+skip = [{ name = "syn", version = "2" }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# Only crates.io. A git or path dependency on a private repository is exactly
+# what made this project unbuildable from a clean clone; keep that door shut.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,67 +1,177 @@
 name: Release
 
+# Publishes an immutable GitHub Release for a version tag.
+#
+# Needs no secrets beyond the automatic GITHUB_TOKEN and no access to any other
+# repository. Signing credentials, when they exist, must be added here and
+# nowhere that a pull request can reach.
+#
+# Cut a release by tagging the commit whose Cargo.toml carries that version:
+#
+#     git tag v0.2.0-beta.1
+#     git push origin v0.2.0-beta.1
+#
+# The tag is never moved. If a release is wrong, publish a new version.
+
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch: {}
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build the artifacts but do not publish a release
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  release:
+    name: Build and publish
     runs-on: windows-latest
+    permissions:
+      # Needed only to create the release; everything else stays read-only.
+      contents: write
     steps:
-      # veloryft-hud has a hard path dependency on the sibling repo
-      # veloryft-back (`veloryft-core = { path = "../../veloryft-back/crates/core" }`,
-      # relative to src-tauri/Cargo.toml). Both repos are checked out as
-      # siblings under a common parent so that relative path resolves
-      # without touching Cargo.toml.
-      - name: Checkout veloryft-hud
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          path: veloryft/veloryft-hud
+          toolchain: stable
+          components: clippy, rustfmt
 
-      - name: Checkout veloryft-back
-        uses: actions/checkout@v4
-        with:
-          repository: esousa-dev/veloryft-back
-          token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
-          path: veloryft/veloryft-back
+      # 1. The tag must match the version in Cargo.toml, or the artifacts would
+      #    be named after a version nobody can reproduce from the source.
+      - name: Validate version consistency
+        id: version
+        shell: pwsh
+        run: |
+          . "$env:GITHUB_WORKSPACE\scripts\common.ps1"
+          $version = Get-PackageVersion
+          Write-Host "Cargo version: $($version.SemVer)"
+          Write-Host "Windows resource version: $($version.Windows)"
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
+            if ($tag -ne "v$($version.SemVer)") {
+              throw "tag '$tag' does not match Cargo.toml version '$($version.SemVer)'. Expected 'v$($version.SemVer)'."
+            }
+            Write-Host "Tag $tag matches Cargo.toml."
+          }
 
-      - name: Cargo build (release)
-        working-directory: veloryft/veloryft-hud/src-tauri
-        run: cargo build --release
+          "semver=$($version.SemVer)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "windows=$($version.Windows)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $prerelease = if ($version.SemVer -match '-') { 'true' } else { 'false' }
+          "prerelease=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # 2-4. The same gates a pull request passes. A release must never ship
+      #      something that would have been rejected on the way in.
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --all-features
+
+      # 5. --locked so the released binary is built from the committed lockfile.
+      - name: Build release binary
+        run: cargo build --release --locked
 
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        run: choco install innosetup --no-progress -y
 
-      - name: Compile installer with Inno Setup
-        working-directory: veloryft/veloryft-hud
-        run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\veloryft.iss
+      # 6-7. Both distribution formats, from the binary just built.
+      - name: Build installer
         shell: pwsh
+        run: ./scripts/build_installer.ps1 -SkipBuild
 
-      - name: Rename installer to canonical asset name
-        working-directory: veloryft/veloryft-hud
+      - name: Build portable package
+        shell: pwsh
+        run: ./scripts/build_portable.ps1 -SkipBuild
+
+      # 8. Checksums, so users can verify an unsigned download.
+      - name: Generate checksums
+        shell: pwsh
+        run: ./scripts/generate_checksums.ps1
+
+      # 9. Signing goes here once a certificate exists. Until then the artifacts
+      #    are unsigned, and the release notes say so rather than implying
+      #    otherwise.
+      - name: Report signing status
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path dist -Filter "Veloryft-Setup-*.exe" | Select-Object -First 1
-          if (-not $installer) {
-            throw "No installer exe found in dist\"
-          }
-          Copy-Item $installer.FullName "dist\veloryft-setup.exe"
+          Write-Host '::notice::Artifacts are NOT code-signed. Users will see a SmartScreen warning; checksums are published instead.'
 
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: veloryft-setup
-          path: veloryft/veloryft-hud/dist/veloryft-setup.exe
+      - name: List artifacts
+        shell: pwsh
+        run: Get-ChildItem dist | Format-Table Name, Length
 
-      - name: Upload release asset
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          files: veloryft/veloryft-hud/dist/veloryft-setup.exe
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: veloryft-${{ steps.version.outputs.semver }}
+          path: |
+            dist/Veloryft-Setup-*.exe
+            dist/Veloryft-Portable-*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      # 10-11. An immutable release per version tag. Prereleases are marked as
+      #        such, so "latest" keeps pointing at the newest stable build.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.4.1
+        with:
+          name: Veloryft ${{ steps.version.outputs.semver }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            Veloryft is a native, click-through Forza telemetry HUD for 64-bit
+            Windows 10 and later. It processes telemetry locally and requires
+            no account, activation key, or separate runtime.
+
+            ## Choose your download
+
+            | File | Use it when |
+            | --- | --- |
+            | `Veloryft-Setup-${{ steps.version.outputs.semver }}.exe` | You want a Start menu entry and normal Windows uninstaller. |
+            | `Veloryft-Portable-${{ steps.version.outputs.semver }}.zip` | You want to unzip and run without installation. |
+            | `SHA256SUMS` | You want to verify either download before running it. |
+
+            ## Verify before running
+
+            These beta downloads are not code-signed yet, so Windows SmartScreen
+            may warn you. Verify the SHA-256 checksum first:
+
+            ```powershell
+            (Get-FileHash .\Veloryft-Setup-${{ steps.version.outputs.semver }}.exe).Hash.ToLower()
+            ```
+
+            Compare the result with the matching line in `SHA256SUMS`.
+
+            ## Quick start
+
+            In Forza: Settings → HUD and Gameplay → Data Out. Set it on, IP
+            `127.0.0.1`, port `20066`.
+
+            Forza sends a numeric car ordinal rather than a display name.
+            Veloryft does not bundle an unlicensed community catalog; it shows
+            the ordinal unless you provide a local mapping.
+
+            Read the [quick start](https://github.com/ESousa97/veloryft-hud#quick-start),
+            [changelog](https://github.com/ESousa97/veloryft-hud/blob/main/CHANGELOG.md),
+            and [installation guide](https://github.com/ESousa97/veloryft-hud/blob/main/docs/getting_started/installation.md).
+          files: |
+            dist/Veloryft-Setup-*.exe
+            dist/Veloryft-Portable-*.zip
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true

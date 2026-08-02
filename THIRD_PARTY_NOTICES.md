@@ -1,0 +1,102 @@
+# Third-party notices
+
+Veloryft itself is licensed under Apache-2.0 (see [LICENSE](LICENSE)). This file
+records everything else the project redistributes or depends on.
+
+## Rust dependencies
+
+These crates are compiled into the released binary. The list covers the default
+build **and** the optional `track_mapping` feature, because the same source tree
+can produce either.
+
+Regenerate it with:
+
+```bash
+cargo tree --all-features -e normal --prefix none
+```
+
+Every license below is permissive and compatible with redistributing a binary
+under Apache-2.0. `cargo deny check` enforces that on every pull request; the
+allowed set lives in [deny.toml](deny.toml).
+
+| Crate | Version | License |
+| ----- | ------- | ------- |
+| [arc-swap](https://github.com/vorner/arc-swap) | 1.9.2 | MIT OR Apache-2.0 |
+| [ascii](https://github.com/tomprogrammer/rust-ascii) | 1.1.0 | Apache-2.0 OR MIT |
+| [chunked_transfer](https://github.com/frewsxcv/rust-chunked-transfer) | 1.5.0 | MIT OR Apache-2.0 |
+| [httpdate](https://github.com/pyfisch/httpdate) | 1.0.3 | MIT OR Apache-2.0 |
+| [itoa](https://github.com/dtolnay/itoa) | 1.0.18 | MIT OR Apache-2.0 |
+| [log](https://github.com/rust-lang/log) | 0.4.33 | MIT OR Apache-2.0 |
+| [memchr](https://github.com/BurntSushi/memchr) | 2.8.3 | Unlicense OR MIT |
+| [proc-macro2](https://github.com/dtolnay/proc-macro2) | 1.0.107 | MIT OR Apache-2.0 |
+| [quote](https://github.com/dtolnay/quote) | 1.0.47 | MIT OR Apache-2.0 |
+| [rustversion](https://github.com/dtolnay/rustversion) | 1.0.23 | MIT OR Apache-2.0 |
+| [serde](https://github.com/serde-rs/serde) | 1.0.229 | MIT OR Apache-2.0 |
+| [serde_core](https://github.com/serde-rs/serde) | 1.0.229 | MIT OR Apache-2.0 |
+| [serde_derive](https://github.com/serde-rs/serde) | 1.0.229 | MIT OR Apache-2.0 |
+| [serde_json](https://github.com/serde-rs/json) | 1.0.151 | MIT OR Apache-2.0 |
+| [syn](https://github.com/dtolnay/syn) | 3.0.3 | MIT OR Apache-2.0 |
+| [tiny_http](https://github.com/tiny-http/tiny-http) | 0.12.0 | MIT OR Apache-2.0 |
+| [unicode-ident](https://github.com/dtolnay/unicode-ident) | 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 |
+| [windows](https://github.com/microsoft/windows-rs) | 0.61.3 | MIT OR Apache-2.0 |
+| [windows-collections](https://github.com/microsoft/windows-rs) | 0.2.0 | MIT OR Apache-2.0 |
+| [windows-core](https://github.com/microsoft/windows-rs) | 0.61.2 | MIT OR Apache-2.0 |
+| [windows-future](https://github.com/microsoft/windows-rs) | 0.2.1 | MIT OR Apache-2.0 |
+| [windows-implement](https://github.com/microsoft/windows-rs) | 0.60.2 | MIT OR Apache-2.0 |
+| [windows-interface](https://github.com/microsoft/windows-rs) | 0.59.3 | MIT OR Apache-2.0 |
+| [windows-link](https://github.com/microsoft/windows-rs) | 0.2.1 | MIT OR Apache-2.0 |
+| [windows-numerics](https://github.com/microsoft/windows-rs) | 0.2.0 | MIT OR Apache-2.0 |
+| [windows-result](https://github.com/microsoft/windows-rs) | 0.3.4 | MIT OR Apache-2.0 |
+| [windows-strings](https://github.com/microsoft/windows-rs) | 0.4.2 | MIT OR Apache-2.0 |
+| [windows-threading](https://github.com/microsoft/windows-rs) | 0.1.0 | MIT OR Apache-2.0 |
+| [zmij](https://github.com/dtolnay/zmij) | 1.0.23 | MIT |
+
+Dual licenses such as `MIT OR Apache-2.0` are used under Apache-2.0 for
+consistency with this project's own license.
+
+`unicode-ident` additionally carries the Unicode-3.0 license for its embedded
+Unicode character tables, which permits redistribution with attribution.
+
+## External data not redistributed
+
+### Forza Horizon 6 car ordinals
+
+Veloryft supports an optional user-provided ordinal-to-name catalog, but does
+not include one in this repository, executable, installer, or portable package.
+
+The catalog previously stored at `data/car_ordinals.json` was traced to:
+
+- **Author:** Martin Refseth ([HDR](https://github.com/HDR))
+- **Source:** [Forza Horizon 6 Car Ordinals](https://gist.github.com/HDR/0659d1717bc61504bf83750628963f4f)
+- **Author's description:** identifiers extracted from the game's vehicle files
+- **License:** none declared by the source
+
+The local copy contained 638 entries and differed from the later 651-entry gist
+revision, but the overlap and repository history establish the source. Because
+the gist grants no explicit reuse license, the data was removed rather than
+relicensed by assumption. This notice records attribution and the reason it is
+not shipped; it does not claim that the external data is Apache-2.0 content.
+
+Users who independently obtain or create a compatible file can load it locally.
+Without one, Veloryft shows the raw ordinal and all telemetry features continue
+to work.
+
+## Brand assets
+
+The artwork in `assets/brand/` and the installer artwork generated from it
+(`installer/assets/`) are project trademarks, not Apache-2.0 content. See
+[TRADEMARKS.md](TRADEMARKS.md).
+
+## Third-party trademarks
+
+"Forza", "Forza Horizon", "Forza Motorsport", "Xbox", and "Microsoft" are
+trademarks of Microsoft Corporation. "Turn 10 Studios" and "Playground Games"
+are names of their respective owners. Vehicle manufacturer and model names
+supplied through an external catalog are trademarks of their respective owners.
+
+Veloryft is not affiliated with, sponsored by, or endorsed by any of them. Every
+reference is descriptive: it identifies what the software is compatible with.
+
+Veloryft reads only the telemetry the game itself transmits through its own
+"Data Out" feature when the user enables it. It does not modify the game, read
+or write its memory, or inject code.

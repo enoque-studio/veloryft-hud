@@ -1,0 +1,63 @@
+name: Feature request
+description: Suggest something Veloryft should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the solution. Knowing what you were trying
+        to do while driving usually points at a better answer than the one
+        either of us thought of first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem
+      description: What are you trying to do, and what makes it awkward today?
+      placeholder: |
+        While driving I want to know X, but the HUD only shows Y, so I have to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Veloryft
+      options:
+        - A HUD panel (cluster, tires, g-force, elevation)
+        - Edit mode and layout
+        - Theme and appearance
+        - Shortcuts and the tray icon
+        - Telemetry and packet support
+        - Track mapping
+        - Installer, portable package, or updates
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else have you considered
+      description: Including doing nothing, or an existing setting that nearly works.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Please confirm
+      description: |
+        Veloryft draws over a running game. Anything on the render path has to
+        stay free of allocation and locking, so a feature that needs work per
+        frame may be answered with "not on that path" rather than "no".
+      options:
+        - label: I searched existing issues and discussions
+          required: true
+        - label: I understand this is an open beta maintained by one person, and there is no commitment to build it
+          required: true

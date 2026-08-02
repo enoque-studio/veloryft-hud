@@ -1,7 +1,22 @@
-*.log
-
-# Saída do instalador
+# Build output
+/target/
 /dist/
 
-# Artefatos locais do Cargo podem conter o HMAC provisionado no build.
-/src-tauri/target/
+# Logs and scratch files
+*.log
+*.tmp
+*.bak
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Tooling output
+coverage/
+reports/

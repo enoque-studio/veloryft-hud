@@ -1,0 +1,137 @@
+name: CI
+
+# Public CI. Needs no secrets and no access to any other repository: a fork can
+# run this workflow unchanged.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A warning that only appears in CI is a warning nobody fixes.
+  RUSTFLAGS: -D warnings
+  # RUSTFLAGS does not reach rustdoc, so broken intra-doc links need their own
+  # setting or cargo doc reports them and exits zero.
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  # Formatting and documentation are platform-independent, so they run on the
+  # cheapest runner rather than waiting behind a Windows queue.
+  format-and-docs:
+    name: Format and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.7.8
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      # Only the protocol crate builds off Windows; the overlay needs Win32.
+      - name: cargo doc (veloryft-protocol)
+        run: cargo doc --package veloryft-protocol --no-deps
+
+  windows:
+    name: Build, lint and test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.7.8
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      # Both configurations are checked: a feature that only compiles when it is
+      # enabled, or only when it is not, is a break waiting for a release.
+      - name: cargo check (all features)
+        run: cargo check --workspace --all-targets --all-features
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo clippy (all features)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo test (all features)
+        run: cargo test --workspace --all-features
+
+      - name: cargo doc
+        run: cargo doc --workspace --all-features --no-deps
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      # Proves a clean checkout produces a runnable executable with no private
+      # repository, no token, and no license secrets.
+      - name: Verify the release binary exists
+        shell: pwsh
+        run: |
+          $exe = 'target\release\veloryft.exe'
+          if (-not (Test-Path $exe)) { throw "release binary not found at $exe" }
+          $size = (Get-Item $exe).Length / 1MB
+          Write-Host ('OK: {0} ({1:N1} MB)' -f $exe, $size)
+
+  # The telemetry pipeline is genuinely platform-independent, so it is tested on
+  # Linux too. The overlay is not, and is not pretended to be.
+  portable-telemetry:
+    name: Telemetry tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.7.8
+
+      - name: Protocol contract tests
+        run: cargo test --package veloryft-protocol
+
+  minimum-rust-version:
+    name: Minimum supported Rust version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Kept in step with rust-version in Cargo.toml. Raising one without the
+      # other is exactly what this job exists to catch.
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # 1.85
+        with:
+          toolchain: "1.85"
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.7.8
+
+      - name: cargo check on the declared MSRV
+        run: cargo check --workspace --all-targets --all-features
+
+  dependencies:
+    name: Licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.0.14
+        with:
+          command: check
+          # advisories: unpatched vulnerabilities
+          # bans:       duplicate and wildcard dependencies
+          # licenses:   the allowed set in deny.toml
+          # sources:    crates.io only, which is what keeps a private path or
+          #             git dependency from creeping back in
