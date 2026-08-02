@@ -10,6 +10,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use veloryft_hud::version::windows_resource_version;
 
@@ -113,6 +114,38 @@ fn the_packaging_scripts_exist_under_their_documented_names() {
     ] {
         assert!(exists(script), "{script} is missing");
     }
+}
+
+#[test]
+fn checksum_generation_accepts_a_single_release_artifact() {
+    // PowerShell unwraps a one-item pipeline into a scalar. Keep this execution
+    // test because StrictMode then makes `.Count` fail unless the script
+    // explicitly preserves the collection.
+    let test_directory = repository_root()
+        .join("target")
+        .join(format!("checksum-test-{}", std::process::id()));
+    let artifact = test_directory.join("Veloryft-Portable-test.zip");
+    fs::create_dir_all(&test_directory).expect("creating the checksum test directory");
+    fs::write(&artifact, b"synthetic portable artifact").expect("writing the test artifact");
+
+    let output = Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(repository_root().join("scripts/generate_checksums.ps1"))
+        .arg("-Path")
+        .arg(&test_directory)
+        .output()
+        .expect("running generate_checksums.ps1");
+
+    let cleanup_result = fs::remove_dir_all(&test_directory);
+    assert!(
+        output.status.success(),
+        "checksum generation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    cleanup_result.expect("removing the checksum test directory");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("OK: checksums"));
 }
 
 #[test]

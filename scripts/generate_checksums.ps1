@@ -40,9 +40,11 @@ if (-not (Test-Path $Path)) {
   throw "artifact directory '$Path' does not exist. Build the installer or the portable package first."
 }
 
-$artifacts = Get-ChildItem -Path $Path -File |
-  Where-Object { $_.Extension -in '.exe', '.zip' } |
-  Sort-Object Name
+$artifacts = @(
+  Get-ChildItem -Path $Path -File |
+    Where-Object { $_.Extension -in '.exe', '.zip' } |
+    Sort-Object Name
+)
 
 if ($artifacts.Count -eq 0) {
   throw "no .exe or .zip artifacts found in '$Path'. Nothing to checksum."
