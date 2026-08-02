@@ -11,7 +11,7 @@
     pwsh installer/build-installer.ps1 -SkipBuild   # empacota exe existente
     pwsh installer/build-installer.ps1 -Assets      # regenera artes antes
 
-  Saída: dist/Veloryft-Setup-<versao>-beta.exe
+  Saída: dist/Veloryft-Setup-<versao>.exe
 #>
 [CmdletBinding()]
 param(

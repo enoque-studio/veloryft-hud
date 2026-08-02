@@ -30,8 +30,9 @@ fn main() {
     );
     res.set("InternalName", "forza-hud-native");
     res.set("OriginalFilename", "Veloryft.exe");
-    res.set("ProductVersion", &format!("{version}-beta"));
-    res.set("FileVersion", &version);
+    let windows_version = format!("{version}.0");
+    res.set("ProductVersion", &windows_version);
+    res.set("FileVersion", &windows_version);
     res.compile()
         .expect("falha ao embutir recursos do Windows (rc.exe do SDK)");
 }

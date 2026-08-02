@@ -1,11 +1,11 @@
 ﻿; ============================================================================
 ;  Veloryft — installer (Inno Setup 6)
 ;  Compile:  ISCC.exe installer\veloryft.iss
-;  Output:   dist\Veloryft-Setup-<version>-beta.exe
+;  Output:   dist\Veloryft-Setup-<version>.exe
 ; ============================================================================
 
 #define MyAppName "Veloryft"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.0.0"
 #define MyAppPublisher "Veloryft"
 #define MyAppURL "https://veloryft.com"
 #define MyAppExeName "Veloryft.exe"
@@ -30,7 +30,7 @@ VersionInfoVersion={#MyAppVersion}
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
-VersionInfoDescription={#MyAppName} Setup (Beta)
+VersionInfoDescription={#MyAppName} Setup
 
 ; Per-user install (no UAC); the user can still opt for "all users" in the
 ; privileges dialog.
@@ -67,7 +67,7 @@ InfoAfterFile=README.txt
 Compression=lzma2/max
 SolidCompression=yes
 OutputDir=..\dist
-OutputBaseFilename=Veloryft-Setup-{#MyAppVersion}-beta
+OutputBaseFilename=Veloryft-Setup-{#MyAppVersion}
 ShowLanguageDialog=no
 
 [Languages]

@@ -1,9 +1,8 @@
 name: Release beta installer
 
 # Builds the Windows installer and publishes it to a single rolling GitHub
-# Release tagged `beta`, under a fixed asset name (no version in the
-# filename) so the site's download button never needs to change:
-# https://github.com/esousa-dev/veloryft-hud/releases/download/beta/Veloryft-Setup-beta.exe
+# Release tagged `beta`; distributed artifact names carry their version and
+# do not include channel labels such as "beta" or "final".
 #
 # Requires this repo secret:
 #   VELORYFT_BACK_PAT — a PAT with read-only "Contents" access to the
@@ -51,14 +50,6 @@ jobs:
       - name: Build portable zip
         shell: pwsh
         run: ./installer/build-portable.ps1 -SkipBuild
-
-      - name: Stage fixed-name assets
-        shell: pwsh
-        run: |
-          $setup = Get-ChildItem dist\Veloryft-Setup-*.exe | Select-Object -First 1
-          Copy-Item $setup.FullName "dist\Veloryft-Setup-beta.exe"
-          $portable = Get-ChildItem dist\Veloryft-Portable-*.zip | Select-Object -First 1
-          Copy-Item $portable.FullName "dist\Veloryft-Portable-beta.zip"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2

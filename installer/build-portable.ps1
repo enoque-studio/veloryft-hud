@@ -9,7 +9,7 @@
     pwsh installer/build-portable.ps1              # build completo
     pwsh installer/build-portable.ps1 -SkipBuild   # empacota exe já compilado
 
-  Saída: dist/Veloryft-Portable-<versao>-beta.zip
+  Saída: dist/Veloryft-Portable-<versao>.zip
 #>
 [CmdletBinding()]
 param(
@@ -44,7 +44,7 @@ Copy-Item $exe (Join-Path $stageDir "Veloryft.exe")
 Copy-Item "installer\README.txt" (Join-Path $stageDir "Read Me.txt")
 Copy-Item "installer\EULA.txt" (Join-Path $stageDir "License Agreement.txt")
 
-$zipPath = "dist\Veloryft-Portable-$version-beta.zip"
+$zipPath = "dist\Veloryft-Portable-$version.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 Compress-Archive -Path (Join-Path $stageDir '*') -DestinationPath $zipPath
 Remove-Item $stageDir -Recurse -Force

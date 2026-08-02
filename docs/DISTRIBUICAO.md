@@ -49,7 +49,7 @@ pwsh installer/build-installer.ps1
 ```
 
 Isso compila o release (`cargo build --release`) e depois o instalador (ISCC).
-Saída em `dist/Veloryft-Setup-0.1.0-beta.exe`.
+Saída em `dist/Veloryft-Setup-0.1.0.0.exe`.
 
 Variações:
 
@@ -127,7 +127,7 @@ signtool sign /fd SHA256 /f $cert /p <senha> /tr $ts /td SHA256 `
 
 # 3) assinar o instalador gerado
 signtool sign /fd SHA256 /f $cert /p <senha> /tr $ts /td SHA256 `
-  dist\Veloryft-Setup-0.1.0-beta.exe
+  dist\Veloryft-Setup-0.1.0.0.exe
 ```
 
 Inno Setup também suporta assinatura automática via `SignTool` (diretiva
