@@ -22,6 +22,9 @@ use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
+};
 use windows::Win32::UI::HiDpi::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::Shell::*;
@@ -46,6 +49,11 @@ const RESIZE_MARGIN: i32 = 8;
 const MIN_SZ: i32 = 80;
 const MAGNET: i32 = 12;
 const FRAME_MIN_MS: u64 = 16;
+// A barra crítica é pequena e possui seu próprio surface/thread. Mantê-la em
+// 125 Hz reduz a espera pelo próximo desenho quando chegam pacotes rápidos.
+const THROTTLE_FRAME_MS: u64 = 8;
+const THROTTLE_TAU_ATTACK: f32 = 0.004;
+const THROTTLE_TAU_RELEASE: f32 = 0.010;
 const IDLE_SLEEP_MS: u64 = 50;
 const PRESENT_SLOW_MS: f32 = 4.0;
 const PRESENT_SEVERE_MS: f32 = 9.0;
@@ -2155,6 +2163,11 @@ fn spawn_critical_throttle(
     thread::Builder::new()
         .name("critical-throttle-d2d".into())
         .spawn(move || unsafe {
+            // Prioridade alta (não realtime): o trabalho desta thread é curto e
+            // ela bloqueia entre frames, evitando disputar CPU com o jogo.
+            if SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST).is_err() {
+                eprintln!("[throttle] não foi possível elevar a prioridade da thread");
+            }
             let instance = match GetModuleHandleW(None) {
                 Ok(module) => HINSTANCE(module.0),
                 Err(e) => {
@@ -2205,7 +2218,12 @@ fn spawn_critical_throttle(
                 } else {
                     0.0
                 };
-                displayed = display::exp_smooth(displayed, target, dt, display::TAU_BAR);
+                let throttle_tau = if target >= displayed {
+                    THROTTLE_TAU_ATTACK
+                } else {
+                    THROTTLE_TAU_RELEASE
+                };
+                displayed = display::exp_smooth(displayed, target, dt, throttle_tau);
                 let target_alpha = if driving { 1.0 } else { 0.0 };
                 let alpha_tau = if target_alpha > alpha {
                     display::TAU_FADE_IN
@@ -2227,8 +2245,8 @@ fn spawn_critical_throttle(
                     eprintln!("[throttle] draw: {e:?}");
                 }
                 let elapsed = last_tick.elapsed();
-                if elapsed < Duration::from_millis(FRAME_MIN_MS) {
-                    thread::sleep(Duration::from_millis(FRAME_MIN_MS) - elapsed);
+                if elapsed < Duration::from_millis(THROTTLE_FRAME_MS) {
+                    thread::sleep(Duration::from_millis(THROTTLE_FRAME_MS) - elapsed);
                 }
             }
         })
