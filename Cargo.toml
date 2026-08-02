@@ -1,0 +1,101 @@
+[package]
+name = "veloryft-hud"
+version = "0.2.0-beta.1"
+description = "Native Direct2D telemetry overlay for Forza on Windows"
+authors = ["Enoque Sousa <https://github.com/ESousa97>"]
+repository = "https://github.com/ESousa97/veloryft-hud"
+homepage = "https://github.com/ESousa97/veloryft-hud"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["forza", "telemetry", "overlay", "hud", "direct2d"]
+categories = ["game-development", "visualization"]
+rust-version = "1.85"
+edition = "2021"
+# The published artifacts are the installer and the portable zip, not a crate.
+publish = false
+
+# The in-game overlay. Named `veloryft` so the built file is `veloryft.exe`;
+# the installer still deploys it as `Veloryft.exe`.
+[[bin]]
+name = "veloryft"
+path = "src/main.rs"
+
+[lib]
+# Distinct from the binary name so both targets can coexist on Windows.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "veloryft_hud"
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+# Track mapping: world-height recorder, its loopback HTTP API, and the
+# serialization contract shared with the Veloryft backend. Off by default —
+# see docs/decisions/adr_0004_track_mapping_feature.md.
+track_mapping = ["dep:tiny_http", "dep:veloryft-protocol"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+arc-swap = "1"
+
+# track_mapping only.
+tiny_http = { version = "0.12", optional = true }
+veloryft-protocol = { version = "0.1.0", path = "crates/veloryft_protocol", optional = true }
+
+# Native overlay: Direct2D + Win32 layered, click-through windows.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct2D",
+  "Win32_Graphics_Direct2D_Common",
+  "Win32_Graphics_DirectWrite",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+[target.'cfg(windows)'.dependencies.windows-numerics]
+version = "0.2"
+
+# Executable metadata (icon, version info) — see build.rs.
+[build-dependencies]
+winresource = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Distribution release: smaller binary, one codegen unit, symbols stripped.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[lints]
+workspace = true
+
+# ---------------------------------------------------------------------------
+# Workspace
+#
+# Two members only: this application and the serialization contract it shares
+# with the Veloryft backend. The contract is a separate crate because a second
+# repository consumes it and it must be versioned independently — not for
+# cosmetic organization. See docs/decisions/adr_0003_public_protocol_boundary.md.
+# ---------------------------------------------------------------------------
+[workspace]
+members = ["crates/veloryft_protocol"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
