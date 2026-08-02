@@ -59,7 +59,7 @@ Unicode character tables, which permits redistribution with attribution.
 
 ## Data
 
-### data/car-ordinals.json
+### data/car_ordinals.json
 
 **Status: provenance unresolved — this is a release blocker.**
 
@@ -105,7 +105,7 @@ The artwork in `assets/brand/` and the installer artwork generated from it
 "Forza", "Forza Horizon", "Forza Motorsport", "Xbox", and "Microsoft" are
 trademarks of Microsoft Corporation. "Turn 10 Studios" and "Playground Games"
 are names of their respective owners. Vehicle manufacturer and model names in
-`data/car-ordinals.json` are trademarks of their respective owners.
+`data/car_ordinals.json` are trademarks of their respective owners.
 
 Veloryft is not affiliated with, sponsored by, or endorsed by any of them. Every
 reference is descriptive: it identifies what the software is compatible with.

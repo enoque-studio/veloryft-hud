@@ -92,6 +92,10 @@ module-wide or crate-wide allow.
   tell which lines are which.
 - If you change behaviour a user can observe, update the documentation in the
   same pull request. A `docs/` tree that lags the code is worse than none.
+- Keep code, technical names, comments, tests, logs, and documentation in
+  English. Put user-facing text in `src/localization/`; do not embed it in a
+  renderer, window procedure, or diagnostics call. See the
+  [localization guide](docs/development/localization.md).
 - New behaviour needs a test. If it cannot be tested, say why in the pull
   request; that is usually a sign the boundary is in the wrong place.
 

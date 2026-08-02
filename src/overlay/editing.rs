@@ -25,11 +25,11 @@ struct Grab {
     win0: RECT,
     mouse0: POINT,
     move_mode: bool,
-    anchor: POINT,     // canto fixo no resize
-    h_active: bool,    // largura varia (bordas/cantos horizontais)
-    v_active: bool,    // altura varia
-    from_right: bool,  // anchor na direita → card cresce p/ esquerda
-    from_bottom: bool, // anchor embaixo → card cresce p/ cima
+    anchor: POINT,     // fixed resize corner
+    h_active: bool,    // width changes on horizontal edges/corners
+    v_active: bool,    // height changes
+    from_right: bool,  // right anchor means the card grows leftward
+    from_bottom: bool, // bottom anchor means the card grows upward
 }
 
 thread_local! {
@@ -51,7 +51,7 @@ pub(crate) enum Zone {
     Br,
 }
 
-/// Zona sob o cursor (coords de tela): centro = mover; bordas/cantos = resize.
+/// Zone under the cursor in screen coordinates: center moves, edges/corners resize.
 pub(crate) unsafe fn zone_at(hwnd: HWND, sx: i32, sy: i32) -> Zone {
     let r = window_rect(hwnd);
     let m = RESIZE_MARGIN;
@@ -80,7 +80,7 @@ pub(crate) unsafe fn zone_at(hwnd: HWND, sx: i32, sy: i32) -> Zone {
     }
 }
 
-/// Cursor estilo janela do Windows conforme a zona sob o ponteiro.
+/// Windows-style resize cursor for the zone under the pointer.
 pub(crate) unsafe fn apply_cursor(hwnd: HWND) {
     let mut m = POINT::default();
     let _ = GetCursorPos(&mut m);
@@ -160,9 +160,9 @@ pub(crate) unsafe fn grab_move(hwnd: HWND) {
         return;
     }
 
-    // Resize: escala a partir do canto fixo em direção ao cursor, mantendo a
-    // proporção do design — o card cresce inteiro (preenche, sem deformar, sem
-    // tremer). Imã suave encaixa a largura na malha.
+    // Resize from the fixed corner toward the cursor while preserving the
+    // design ratio. The whole card grows without distortion or jitter, and
+    // soft snapping aligns its width to the grid.
     let (dw, dh) = design_of(hwnd);
     let (dwf, dhf) = (dw.max(1) as f32, dh.max(1) as f32);
     let min_scale = MIN_SZ as f32 / dwf.min(dhf);

@@ -8,6 +8,7 @@ use windows::Win32::Graphics::Direct2D::Common::*;
 use windows_numerics::Vector2;
 
 use super::Panel;
+use crate::localization::text;
 use crate::overlay::geometry::{rectf, rounded};
 use crate::overlay::theme::color;
 use crate::telemetry::display::DisplayFrame;
@@ -82,6 +83,7 @@ impl Panel {
         }
     }
     pub(super) fn draw_tires(&self, f: &DisplayFrame, w: f32, h: f32) {
+        let messages = text();
         let pad = (w * 0.05).max(8.0);
         let head_h = (h * 0.09).max(20.0);
         let gap = pad * 0.85;
@@ -95,13 +97,13 @@ impl Panel {
         let inner = (cell_w.min(cell_h) * 0.09).clamp(6.0, 10.0);
 
         self.text(
-            "TIRES",
+            messages.tires,
             &self.f.small_left,
             rectf(pad, pad * 0.35, pad + grid_w * 0.55, head_h),
             &self.b.gray,
         );
         self.text(
-            "°C",
+            messages.degrees_celsius,
             &self.f.small_right,
             rectf(w - pad - 36.0, pad * 0.35, w - pad, head_h),
             &self.b.gray,
@@ -122,7 +124,7 @@ impl Panel {
             );
         }
 
-        let corners = ["FL", "FR", "RL", "RR"];
+        let corners = messages.tire_corners;
         let positions = [
             (grid_x, grid_top),
             (grid_x + cell_w + gap, grid_top),
@@ -149,7 +151,7 @@ impl Panel {
                     .DrawRoundedRectangle(&outer, &self.b.track_edge, 0.75, None);
             }
 
-            // Badge do canto
+            // Corner badge.
             let badge_h = (cell_h * 0.16).clamp(14.0, 20.0);
             let badge_w = (cell_w * 0.30).clamp(28.0, 44.0);
             let badge = rounded(
@@ -176,7 +178,7 @@ impl Panel {
                 &self.b.gray,
             );
 
-            // Temperatura central
+            // Current temperature.
             let temp_top = y + cell_h * 0.30;
             let temp_bot = y + cell_h * 0.62;
             let bar_h = (cell_h * 0.07).clamp(4.0, 6.0);
@@ -201,10 +203,10 @@ impl Panel {
 
                 let min_s = min_v
                     .map(|v| format!("{:.0}", v))
-                    .unwrap_or_else(|| "–".to_string());
+                    .unwrap_or_else(|| messages.missing_value.to_string());
                 let max_s = max_v
                     .map(|v| format!("{:.0}", v))
-                    .unwrap_or_else(|| "–".to_string());
+                    .unwrap_or_else(|| messages.missing_value.to_string());
                 self.text(
                     &min_s,
                     &self.f.small_left,
@@ -219,7 +221,7 @@ impl Panel {
                 );
             } else {
                 self.text(
-                    "–",
+                    messages.missing_value,
                     &self.f.tire,
                     rectf(x + inner, temp_top, x + cell_w - inner, temp_bot),
                     &self.b.gray,

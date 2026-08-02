@@ -1,4 +1,4 @@
-//! Car names by `car_ordinal`, loaded from `data/car-ordinals.json`
+//! Car names by `car_ordinal`, loaded from `data/car_ordinals.json`
 //! (legacy shape: `"Car Name": "247"`).
 //!
 //! The JSON is embedded into the binary at compile time, so installed and
@@ -14,7 +14,7 @@ use crate::diagnostics::{log_info, log_warn};
 
 static CATALOG: OnceLock<HashMap<i32, String>> = OnceLock::new();
 
-static EMBEDDED_CATALOG: &str = include_str!("../../data/car-ordinals.json");
+static EMBEDDED_CATALOG: &str = include_str!("../../data/car_ordinals.json");
 
 /// Environment variable pointing at a replacement catalog file. Part of the
 /// public contract — see `docs/reference/environment_variables.md`.
@@ -105,11 +105,16 @@ fn candidate_paths() -> Vec<PathBuf> {
         paths.push(PathBuf::from(configured));
     }
     if let Ok(working_directory) = std::env::current_dir() {
+        paths.push(working_directory.join("data/car_ordinals.json"));
+        paths.push(working_directory.join("../data/car_ordinals.json"));
+        // Compatibility with development layouts created before 0.2.
         paths.push(working_directory.join("data/car-ordinals.json"));
         paths.push(working_directory.join("../data/car-ordinals.json"));
     }
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
+            paths.push(directory.join("data/car_ordinals.json"));
+            paths.push(directory.join("../data/car_ordinals.json"));
             paths.push(directory.join("data/car-ordinals.json"));
             paths.push(directory.join("../data/car-ordinals.json"));
         }

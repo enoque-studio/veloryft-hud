@@ -4,11 +4,13 @@ use windows::Win32::Graphics::Direct2D::*;
 use windows_numerics::Vector2;
 
 use super::Panel;
+use crate::localization::text;
 use crate::overlay::geometry::rectf;
 use crate::telemetry::display::DisplayFrame;
 
 impl Panel {
     pub(super) fn draw_gforce(&self, f: &DisplayFrame, w: f32, h: f32) {
+        let messages = text();
         let head_h = h * 0.12;
         let foot_h = h * 0.14;
         let cxg = w * 0.5;
@@ -17,13 +19,14 @@ impl Panel {
         let dot_r = (r * 0.09).clamp(5.0, 9.0);
 
         self.text(
-            "G-FORCE",
+            messages.g_force,
             &self.f.small,
             rectf(0.0, head_h * 0.25, w, head_h),
             &self.b.gray,
         );
-        // G sentida pelo PILOTO = reação inercial, oposta à aceleração do carro.
-        // Inverte só o lateral; o longitudinal já fica certo com o Y da tela p/ baixo.
+        // G-force felt by the driver is the inertial reaction opposite the
+        // vehicle's acceleration. Only lateral is inverted; longitudinal
+        // already matches the screen's downward Y axis.
         let g_lat = -f.lat;
         let g_long = f.long;
         unsafe {
@@ -53,7 +56,7 @@ impl Panel {
                 1.0,
                 None,
             );
-            // Virar p/ a esquerda joga o piloto p/ a direita; frear → topo; acelerar → baixo.
+            // Turning left pushes the driver right; braking moves up and acceleration down.
             let scale = r / 1.5;
             let mut dx = g_lat * scale;
             let mut dy = g_long * scale;

@@ -15,6 +15,7 @@ veloryft-hud/
 │   ├── version.rs          SemVer to Windows version rule (shared with build.rs)
 │   ├── paths.rs            where per-user state lives
 │   ├── diagnostics.rs      bounded logging and startup error reporting
+│   ├── localization/       typed user-interface text and value formatting
 │   ├── application/        startup orchestration and the authorization boundary
 │   ├── telemetry/          UDP, decoding, the domain model, derived state
 │   ├── overlay/            Win32 and Direct2D presentation
@@ -25,7 +26,7 @@ veloryft-hud/
 │
 ├── tests/                  integration, packaging, feature-specific
 ├── examples/               synthetic telemetry sender
-├── data/                   car-ordinals.json, embedded at build time
+├── data/                   car_ordinals.json, embedded at build time
 ├── assets/brand/           logo and wordmark sources
 ├── installer/              Inno Setup definition, EULA, generated artwork
 ├── scripts/                build, packaging, checksums

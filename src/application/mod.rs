@@ -9,6 +9,7 @@
 pub mod authorization;
 
 use crate::diagnostics::{self, log_info};
+use crate::localization::text;
 use authorization::{OpenBetaAuthorization, StartupAuthorization};
 
 /// Runs the application to completion. Returns `Err` only when the overlay could
@@ -19,7 +20,7 @@ pub fn run() -> Result<(), StartupFailure> {
 
     if let Err(cause) = OpenBetaAuthorization.authorize() {
         diagnostics::report_startup_failure(
-            "This build is not authorized to run on this machine.",
+            text().startup_not_authorized,
             &format_args!("{cause}"),
         );
         return Err(StartupFailure::NotAuthorized);
@@ -29,9 +30,7 @@ pub fn run() -> Result<(), StartupFailure> {
     {
         crate::overlay::run().map_err(|cause| {
             diagnostics::report_startup_failure(
-                "The Veloryft overlay could not be created. This usually means \
-                 Direct2D or DirectWrite is unavailable — update your graphics \
-                 driver and make sure you are on 64-bit Windows 10 or later.",
+                text().startup_overlay_unavailable,
                 &format_args!("{cause:?}"),
             );
             StartupFailure::OverlayUnavailable
@@ -43,8 +42,7 @@ pub fn run() -> Result<(), StartupFailure> {
     #[cfg(not(windows))]
     {
         diagnostics::report_startup_failure(
-            "Veloryft runs only on Windows: the overlay is built on Win32 layered \
-             windows and Direct2D.",
+            text().startup_windows_only,
             &format_args!("target platform is not windows"),
         );
         Err(StartupFailure::UnsupportedPlatform)

@@ -3,12 +3,8 @@
 A native telemetry HUD for Forza on Windows. Written in Rust, drawn with
 Direct2D, and you can click straight through it into the game.
 
-![The Veloryft overlay](docs/assets/screenshots/hud_overlay.png)
-
 > **Open beta.** It works and people use it, but expect rough edges. There is no
 > license check, no account, and no key — download it and run it.
-
-*[Leia em português](README.pt_BR.md)*
 
 ## What it does
 

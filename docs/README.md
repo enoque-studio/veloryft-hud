@@ -1,8 +1,6 @@
 # Veloryft documentation
 
-English is the canonical documentation for this project. A shorter Portuguese
-overview is at [README.pt_BR.md](../README.pt_BR.md); it is a summary, not a
-parallel documentation set.
+English is the source language for the application, code, and documentation.
 
 ## I want to use Veloryft
 
@@ -44,6 +42,7 @@ parallel documentation set.
 | [Testing strategy](development/testing_strategy.md) | What is tested, how, and what is not |
 | [Debugging](development/debugging.md) | The log, startup failures, attaching a debugger |
 | [Dependency management](development/dependency_management.md) | Adding, updating, auditing |
+| [Localization](development/localization.md) | English source text, the typed catalog, and adding a locale safely |
 
 Start with [CONTRIBUTING.md](../CONTRIBUTING.md).
 

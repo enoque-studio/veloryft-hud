@@ -1,4 +1,4 @@
-//! Min/max de temperatura por pneu durante a sessão (reset ao trocar de carro).
+//! Per-tire temperature minimum and maximum for the session, reset on vehicle change.
 
 const MAX_VALID_TEMP: f32 = 900.0;
 
@@ -6,7 +6,7 @@ const MAX_VALID_TEMP: f32 = 900.0;
 pub struct TireRange {
     pub min: [f32; 4],
     pub max: [f32; 4],
-    /// Pneu já recebeu leitura válida nesta sessão.
+    /// Whether this tire has received a valid reading in the current session.
     pub seen: [bool; 4],
 }
 
@@ -64,7 +64,7 @@ impl Default for TireTracker {
     }
 }
 
-/// Cor por faixa de temperatura (mesma lógica do apex-flow).
+/// Color by temperature range, matching apex-flow's rules.
 pub fn temp_color(temp: f32) -> (f32, f32, f32, f32) {
     if temp < 150.0 {
         (0.227, 0.639, 1.0, 0.92)
@@ -85,7 +85,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn acumula_min_max_por_roda() {
+    fn accumulates_minimum_and_maximum_per_tire() {
         let mut tr = TireTracker::new();
         tr.update(Some([100.0, 120.0, 90.0, 110.0]), true);
         tr.update(Some([105.0, 115.0, 95.0, 130.0]), true);

@@ -29,13 +29,12 @@
 //! Individual blocks carry a `SAFETY:` comment only where the reasoning goes
 //! beyond that.
 
-use windows::core::w;
 use windows::core::{Result, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, POINT, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-/// Cria uma janela layered (transparente, topo, sem taskbar, click-through).
+/// Create a topmost, click-through layered window without a taskbar entry.
 pub(crate) fn make_window(
     class: PCWSTR,
     instance: HINSTANCE,
@@ -44,11 +43,16 @@ pub(crate) fn make_window(
     w: i32,
     h: i32,
 ) -> Result<HWND> {
+    let title: Vec<u16> = crate::localization::text()
+        .app_name
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     unsafe {
         CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             class,
-            w!("Veloryft"),
+            PCWSTR(title.as_ptr()),
             WS_POPUP,
             x,
             y,
@@ -62,7 +66,7 @@ pub(crate) fn make_window(
     }
 }
 
-/// Cria um DIB top-down 32 bpp (premultiplicado) ligado a um DC.
+/// Create a top-down, premultiplied 32-bpp DIB bound to a device context.
 pub(crate) fn create_dib_bitmap(memdc: HDC, w: i32, h: i32) -> Result<HBITMAP> {
     unsafe {
         let mut bmi: BITMAPINFO = core::mem::zeroed();
@@ -88,7 +92,7 @@ pub(crate) fn create_dib_bitmap(memdc: HDC, w: i32, h: i32) -> Result<HBITMAP> {
     }
 }
 
-/// DC de memória + DIB selecionado (alvo do D2D / fonte do ULW).
+/// Memory DC with a selected DIB, used as the D2D target and ULW source.
 pub(crate) fn make_dib(w: i32, h: i32) -> Result<(HDC, HBITMAP)> {
     unsafe {
         let memdc = CreateCompatibleDC(None);
@@ -121,7 +125,7 @@ pub(crate) unsafe fn design_of(hwnd: HWND) -> (i32, i32) {
     (((packed >> 16) & 0xFFFF) as i32, (packed & 0xFFFF) as i32)
 }
 
-/// Atualiza a janela layered com o conteúdo já desenhado no `memdc`.
+/// Update the layered window with content already drawn into `memdc`.
 pub(crate) fn present(hwnd: HWND, memdc: HDC, pos: POINT, size: SIZE, alpha: u8) -> Result<()> {
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,

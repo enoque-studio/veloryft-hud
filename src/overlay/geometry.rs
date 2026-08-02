@@ -14,6 +14,7 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
 
+use crate::localization::text;
 use crate::telemetry::display::PanelKind;
 
 /// Edit-mode grid pitch, in pixels.
@@ -61,13 +62,13 @@ pub(crate) const CL_BRAKE_Y: f32 = 156.0;
 pub(crate) const CL_ACCEL_Y: f32 = 188.0;
 pub(crate) const TH_W: i32 = (CL_RIGHT_R - CL_RIGHT_X) as i32;
 pub(crate) const TH_H: i32 = 34;
-// --- Pneus ---
+// --- Tires ---
 pub(crate) const TR_W: i32 = 256;
 pub(crate) const TR_H: i32 = 272;
 // --- G-force ---
 pub(crate) const GF_W: i32 = 200;
 pub(crate) const GF_H: i32 = 250;
-// --- Elevação ---
+// --- Elevation ---
 pub(crate) const EL_W: i32 = 300;
 pub(crate) const EL_H: i32 = 200;
 
@@ -110,11 +111,12 @@ impl Kind {
     }
     /// Label shown on the edit toolbar's visibility toggles.
     pub fn short_label(self) -> &'static str {
+        let messages = text();
         match self {
-            Kind::Cluster => "RPM",
-            Kind::Tires => "PNEUS",
-            Kind::GForce => "G",
-            Kind::Elevation => "ALT",
+            Kind::Cluster => messages.panel_rpm,
+            Kind::Tires => messages.panel_tires,
+            Kind::GForce => messages.panel_g_force,
+            Kind::Elevation => messages.panel_altitude,
         }
     }
     /// The telemetry-side counterpart, used to look up smoothed values.

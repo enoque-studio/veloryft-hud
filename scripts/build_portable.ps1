@@ -62,8 +62,8 @@ try {
   # Installed and portable builds ship the same file name, so a user moving
   # between them keeps the same shortcut target and the same tray identity.
   Copy-Item $exe (Join-Path $stage 'Veloryft.exe')
-  Copy-Item (Join-Path $repository 'installer\README.txt') (Join-Path $stage 'Read Me.txt')
-  Copy-Item (Join-Path $repository 'installer\EULA.txt') (Join-Path $stage 'License Agreement.txt')
+  Copy-Item (Join-Path $repository 'installer\readme.txt') (Join-Path $stage 'Read Me.txt')
+  Copy-Item (Join-Path $repository 'installer\eula.txt') (Join-Path $stage 'License Agreement.txt')
 
   $zip = Join-Path $distribution "Veloryft-Portable-$($version.SemVer).zip"
   if (Test-Path $zip) { Remove-Item $zip -Force }

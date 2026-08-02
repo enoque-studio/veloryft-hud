@@ -1,5 +1,5 @@
-//! Perfil de elevação da volta — mapeia o traçado na 1ª volta e reutiliza o
-//! perfil fechado nas voltas seguintes (só a bolinha volta ao início).
+//! Lap elevation profile: map the route on the first lap, then reuse the closed
+//! profile on later laps while only the marker returns to the start.
 
 use super::model::Telemetry;
 
@@ -22,17 +22,17 @@ pub struct ElevPoint {
 
 #[derive(Clone, Debug, Default)]
 pub struct ElevationProfile {
-    /// Perfil exibido — referência fechada ou traçado em construção.
+    /// Displayed profile: either the closed reference or the route being built.
     pub pts: Vec<ElevPoint>,
     pub min: f32,
     pub max: f32,
     pub cur: f32,
-    /// Posição da bolinha ao longo do perfil (m).
+    /// Marker position along the profile in metres.
     pub marker_d: f32,
     pub marker_y: f32,
-    /// Progresso da volta atual (km).
+    /// Current lap progress in kilometres.
     pub lap_km: f32,
-    /// Comprimento do loop fechado (km); 0 enquanto mapeia.
+    /// Closed-loop length in kilometres; zero while mapping.
     pub loop_km: f32,
     pub loop_closed: bool,
 }
@@ -236,7 +236,7 @@ impl ElevationTracker {
         self.push_build_sample(0.0, x, y, z);
     }
 
-    /// Integra um pacote quando `active` (dirigindo / corrida).
+    /// Integrate a packet when `active` indicates that the player is driving.
     pub fn update(&mut self, t: &Telemetry, active: bool) {
         if !active || t.sled_only != 0 {
             self.last_xz = None;
@@ -260,9 +260,9 @@ impl ElevationTracker {
             let jump = Self::distance_xz((x, z), (lx, lz));
             step_jump = jump;
             if jump > MAX_JUMP {
-                // Loop já fechado nunca reconstrói: um salto (rewind/teleporte/respawn)
-                // só reancora a posição. Assim, depois de fechar, a telemetria fica só
-                // deslizando a bolinha em vez de voltar a "carregar" o perfil do zero.
+                // A closed loop is never rebuilt: a rewind, teleport, or respawn
+                // only reanchors the position. Once closed, telemetry only
+                // keeps sliding the marker instead of rebuilding the profile from scratch.
                 if self.loop_len > 0.0 {
                     self.last_xz = Some((x, z));
                     self.cur_y = y;
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn acumula_distancia_e_amostras() {
+    fn accumulates_distance_and_samples() {
         let mut tr = ElevationTracker::new();
         tr.update(&dash_pos(0.0, 100.0, 0.0), true);
         tr.update(&dash_pos(5.0, 101.0, 0.0), true);
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn fecha_loop_e_reutiliza_perfil() {
+    fn closes_the_loop_and_reuses_the_profile() {
         let mut tr = ElevationTracker::new();
         for i in 0..25 {
             tr.update(&dash_pos(20.0 + i as f32 * 4.0, 100.0, 0.0), true);
@@ -397,7 +397,7 @@ mod tests {
         let closed = tr.profile();
         assert!(
             closed.loop_closed,
-            "loop deveria fechar ao voltar ao início"
+            "the loop should close when returning to the start"
         );
         let len_at_close = closed.pts.len();
         assert!(len_at_close >= MIN_BUILD_PTS);
@@ -412,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn salto_apos_fechar_mantem_perfil() {
+    fn a_jump_after_closure_preserves_the_profile() {
         let mut tr = ElevationTracker::new();
         for i in 0..25 {
             tr.update(&dash_pos(20.0 + i as f32 * 4.0, 100.0, 0.0), true);
@@ -426,20 +426,20 @@ mod tests {
         let pts_len = closed.pts.len();
         let loop_km = closed.loop_km;
 
-        // Teleporte/rewind (salto > MAX_JUMP) depois de fechar não pode reconstruir
-        // o perfil — só reancora; a telemetria segue deslizando a bolinha.
+        // A teleport or rewind above MAX_JUMP after closure must not rebuild the
+        // profile. It only reanchors while telemetry keeps moving the marker.
         tr.update(&dash_pos(20.0 + 5000.0, 130.0, 0.0), true);
         let after = tr.profile();
         assert!(
             after.loop_closed,
-            "loop fechado não pode reabrir após salto"
+            "a closed loop must not reopen after a jump"
         );
         assert_eq!(after.pts.len(), pts_len, "perfil deve ser preservado");
         assert_eq!(after.loop_km, loop_km);
     }
 
     #[test]
-    fn loop_fechado_so_move_marcador_circular() {
+    fn a_closed_loop_only_moves_the_marker_around_the_profile() {
         let mut tr = ElevationTracker::new();
         for i in 0..25 {
             tr.update(&dash_pos(20.0 + i as f32 * 4.0, 100.0, 0.0), true);
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn sair_do_loop_reinicia_metrificacao() {
+    fn leaving_the_loop_restarts_distance_tracking() {
         let mut tr = ElevationTracker::new();
         for i in 0..25 {
             tr.update(&dash_pos(20.0 + i as f32 * 4.0, 100.0, 0.0), true);
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn menu_nao_integra() {
+    fn menu_state_does_not_integrate() {
         let mut tr = ElevationTracker::new();
         tr.update(&dash_pos(0.0, 50.0, 0.0), true);
         tr.update(

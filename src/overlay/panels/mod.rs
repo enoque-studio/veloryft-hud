@@ -78,8 +78,8 @@ impl Panel {
         enabled: bool,
     ) -> Result<Self> {
         let (dw, dh) = kind.size();
-        // Mantém a proporção do design (a escala uniforme preenche sem margem);
-        // corrige tamanhos salvos fora de proporção.
+        // Preserve the design aspect ratio. Uniform scaling fills without a
+        // margin and repairs saved sizes with the wrong proportions.
         let min_scale = MIN_SZ as f32 / (dw.min(dh) as f32);
         let scale = (size.0 as f32 / dw as f32)
             .max(size.1 as f32 / dh as f32)
@@ -98,8 +98,8 @@ impl Panel {
         let (memdc, bitmap) = make_dib(w, h)?;
         let dcrt = make_dcrt(factory)?;
         let rt: ID2D1RenderTarget = dcrt.cast()?;
-        // ClearType não funciona sobre alpha por pixel (franja/borrão em janela
-        // layered) — grayscale dá contorno limpo em qualquer fundo.
+        // ClearType does not work over per-pixel alpha in a layered window;
+        // grayscale antialiasing stays crisp over every background.
         unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE) };
         let b = Brushes::new(&rt, dh as f32)?;
         unsafe {
@@ -150,7 +150,7 @@ impl Panel {
         }
     }
 
-    /// Recria o DIB no novo tamanho (após redimensionar a janela).
+    /// Recreate the DIB after the window is resized.
     pub fn resize_dib(&mut self, w: i32, h: i32) -> Result<()> {
         let new_bmp = create_dib_bitmap(self.memdc, w, h)?;
         unsafe {
@@ -182,9 +182,9 @@ impl Panel {
         }
     }
 
-    /// Superfície do card: vidro escuro num fill único, sem borda nem brilho —
-    /// o contorno vem do contraste. `shift` = card inteiro na cor do tema;
-    /// `edit` = contorno ciano de seleção (funcional, só no modo edição).
+    /// Card surface: dark glass in one fill, without a border or glow; contrast
+    /// supplies the outline. `shift` colors the whole card with the theme, while
+    /// `edit` adds a functional cyan selection outline only in edit mode.
     pub fn draw_card(
         &self,
         w: f32,
@@ -217,7 +217,7 @@ impl Panel {
         }
     }
 
-    /// Retorna o tempo gasto no compositor quando apresentou um novo bitmap.
+    /// Return compositor time when a new bitmap was presented.
     pub fn draw(
         &self,
         f: &DisplayFrame,
@@ -250,8 +250,8 @@ impl Panel {
             None
         };
         let key = display::panel_paint_key(self.kind.panel_kind(), f, edit, accent_bits, elev_opt);
-        // A animação é global, mas a chave é específica do painel. Um pedal
-        // animando no cluster não deve forçar pneus/G/elev a serem reenviados.
+        // Animation is global but the key is panel-specific. A pedal animating
+        // in the cluster must not force tires, G-force, or elevation to repaint.
         if !edit && key == self.paint_key.get() {
             return Ok(None);
         }

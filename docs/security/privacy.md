@@ -97,7 +97,7 @@ Remove-Item -Recurse "$env:APPDATA\forza-hud-native"
 
 ## The EULA
 
-`installer/EULA.txt` makes the same statements in legal language. If it and this
+`installer/eula.txt` makes the same statements in legal language. If it and this
 page ever disagree, that is a bug — report it, and read this page as the
 description of what the code does.
 

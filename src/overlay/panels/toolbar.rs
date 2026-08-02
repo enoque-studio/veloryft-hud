@@ -19,6 +19,7 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows_numerics::Vector2;
 
+use crate::localization::text as localized_text;
 use crate::overlay::geometry::{in_rect, rectf, rounded, PANEL_COUNT, PANEL_KINDS};
 use crate::overlay::graphics::{make_dcrt, Fonts};
 use crate::overlay::runtime::{PANEL_VISIBLE, TOOLBAR_DOWN};
@@ -48,7 +49,7 @@ pub(crate) const TB_PANEL_W: i32 = 78;
 pub(crate) const TB_PANEL_H: i32 = 30;
 pub(crate) const TB_PANEL_GAP: i32 = 6;
 pub(crate) const TB_PANEL_X: i32 = TB_COLOR_X;
-// Linha 3: sliders do vidro (opacidade + tom).
+// Row 3: glass opacity and tint sliders.
 pub(crate) const TB_ROW3_Y: i32 = 122;
 pub(crate) const TB_SLIDER_H: i32 = 26;
 pub(crate) const TB_GA_X: i32 = TB_COLOR_X;
@@ -56,7 +57,7 @@ pub(crate) const TB_GA_W: i32 = 150;
 pub(crate) const TB_GT_LABEL_X: i32 = TB_GA_X + TB_GA_W + 16;
 pub(crate) const TB_GT_X: i32 = TB_GT_LABEL_X + 38;
 pub(crate) const TB_GT_W: i32 = TB_W - TB_PAD - TB_GT_X;
-/// Célula "neutro" no início do slider de tom.
+/// Neutral cell at the start of the tint slider.
 pub(crate) const TONE_NEUTRAL_W: i32 = 22;
 pub(crate) const TONE_GAP: i32 = 4;
 pub(crate) const TB_H: i32 = 160;
@@ -155,6 +156,7 @@ impl Toolbar {
     }
 
     pub fn draw(&self) -> Result<()> {
+        let messages = localized_text();
         let t = THEME.get();
         let visible = PANEL_VISIBLE.get();
         let hover = toolbar_hover_hit(self.hwnd);
@@ -188,13 +190,13 @@ impl Toolbar {
                 &self.scratch,
             );
             self.text(
-                "EDITAR HUD",
+                messages.edit_hud,
                 &self.font_caption,
                 rectf(TB_PAD as f32, 4.0, 140.0, 28.0),
                 &self.muted_brush,
             );
             self.text(
-                "COR",
+                messages.color,
                 &self.font_label,
                 rectf(
                     TB_PAD as f32,
@@ -312,7 +314,7 @@ impl Toolbar {
                 None,
             );
             self.text(
-                "CARD",
+                messages.card,
                 &self.font_button,
                 rectf(
                     TB_TARGET_X as f32,
@@ -327,7 +329,7 @@ impl Toolbar {
                 },
             );
             self.text(
-                "MARCHA",
+                messages.gear,
                 &self.font_button,
                 rectf(
                     (TB_TARGET_X + TB_TARGET_SEG_W) as f32,
@@ -343,7 +345,7 @@ impl Toolbar {
             );
 
             self.text(
-                "CARDS",
+                messages.panels,
                 &self.font_label,
                 rectf(
                     TB_PAD as f32,
@@ -432,9 +434,9 @@ impl Toolbar {
                 );
             }
 
-            // ---- Linha 3: vidro (opacidade + tom) ----
+            // ---- Row 3: glass opacity and tint ----
             self.text(
-                "VIDRO",
+                messages.glass,
                 &self.font_label,
                 rectf(
                     TB_PAD as f32,
@@ -451,7 +453,7 @@ impl Toolbar {
             };
             let cy = TB_ROW3_Y as f32 + TB_SLIDER_H as f32 / 2.0;
 
-            // Opacidade: trilho + preenchimento até o knob.
+            // Opacity track and fill up to the knob.
             let (gal, _, gar, _) = glass_alpha_rect();
             let ga_track = rounded(rectf(gal as f32, cy - 3.0, gar as f32, cy + 3.0), 3.0);
             self.scratch.SetColor(&color(1.0, 1.0, 1.0, 0.10));
@@ -470,7 +472,7 @@ impl Toolbar {
             self.rt.DrawEllipse(&knob(kx, cy), &self.scratch, 1.0, None);
 
             self.text(
-                "TOM",
+                messages.tone,
                 &self.font_label,
                 rectf(
                     TB_GT_LABEL_X as f32,
@@ -480,7 +482,7 @@ impl Toolbar {
                 ),
                 &self.muted_brush,
             );
-            // Célula "neutro" + faixa de matiz.
+            // Neutral cell followed by the hue strip.
             let neutral = rounded(
                 rectf(
                     TB_GT_X as f32,
@@ -587,7 +589,7 @@ pub(crate) fn glass_tone_rect() -> (i32, i32, i32, i32) {
     )
 }
 
-/// Início da faixa de matiz (depois da célula "neutro") no slider de tom.
+/// Start of the hue strip after the neutral cell in the tint slider.
 pub(crate) fn tone_strip_x() -> i32 {
     TB_GT_X + TONE_NEUTRAL_W + TONE_GAP
 }
@@ -650,7 +652,7 @@ pub(crate) fn toolbar_hit(x: i32, y: i32) -> i32 {
     HIT_NONE
 }
 
-/// Aplica o arrasto de um slider do vidro (chamado no down e no move).
+/// Apply a glass-slider drag on pointer down and move events.
 pub(crate) fn toolbar_slider_drag(hit: i32, x: i32) {
     let mut t = THEME.get();
     match hit {

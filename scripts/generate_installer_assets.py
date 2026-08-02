@@ -2,7 +2,7 @@
 """Generate the light and dark installer artwork from assets/brand.
 
 Inputs:  assets/brand/veloryft_logo.png, assets/brand/veloryft_mono.png
-Outputs: installer/assets/*.bmp, installer/assets/veloryft.ico, veloryft-256.png
+Outputs: installer/assets/*.bmp, installer/assets/veloryft.ico, veloryft_256.png
 
 Requires Pillow:  pip install pillow
 """
@@ -16,7 +16,7 @@ REPOSITORY = os.path.normpath(os.path.join(HERE, ".."))
 BRAND = os.path.join(REPOSITORY, "assets", "brand")
 OUT = os.path.join(REPOSITORY, "installer", "assets")
 
-BLUE = (24, 112, 255)          # acento da marca, levemente vibrante p/ fundo escuro
+BLUE = (24, 112, 255)          # slightly vivid brand accent for dark backgrounds
 BG_TOP = (12, 18, 30)
 BG_BOT = (4, 6, 11)
 LIGHT_TOP = (249, 251, 255)
@@ -26,9 +26,9 @@ INK = (10, 31, 63)
 # --- helpers ---------------------------------------------------------------
 
 def keyed(src, blue=BLUE, white=(255, 255, 255)):
-    """Tira o fundo branco por luminância: alpha = 255 - min(canal).
-    Pixel azulado -> cor de acento; o resto -> branco. Dá anti-alias limpo
-    tanto contra preto quanto contra o azul, sem halo branco."""
+    """Remove the white background by luminance: alpha = 255 - min(channel).
+    Blue pixels become the accent color and the rest become white. This keeps
+    antialiasing clean against black and blue without a white halo."""
     src = src.convert("RGB")
     px = src.load()
     w, h = src.size
@@ -76,18 +76,18 @@ def rounded_mask(size, radius):
 
 
 def load_mark():
-    """Símbolo 'V' recolorido (branco+azul), recortado no conteúdo."""
+    """Return the recolored white-and-blue V mark cropped to its contents."""
     mark = keyed(Image.open(os.path.join(BRAND, "veloryft_logo.png")))
     return mark.crop(mark.getbbox())
 
 
 def load_wordmark():
-    """Wordmark 'Veloryft' (só o texto, sem o símbolo), branco, recortado."""
+    """Return the white Veloryft wordmark, without the symbol, tightly cropped."""
     full = keyed(Image.open(os.path.join(BRAND, "veloryft_mono.png")))
     bbox = full.getbbox()
     full = full.crop(bbox)
     w, h = full.size
-    # coluna de menor 'tinta' na metade esquerda = fenda entre símbolo e texto
+    # The least-inked column in the left half is the gap between mark and text.
     a = full.getchannel("A")
     col = [sum(a.crop((x, 0, x + 1, h)).get_flattened_data()) for x in range(w)]
     lo, hi = int(w * 0.18), int(w * 0.42)
@@ -124,7 +124,7 @@ def tint_for_light_surface(img):
 def font(name, size):
     return ImageFont.truetype(f"C:/Windows/Fonts/{name}", size)
 
-# --- ícone -----------------------------------------------------------------
+# --- icon ------------------------------------------------------------------
 
 def make_icon(mark):
     S = 1024
@@ -136,7 +136,7 @@ def make_icon(mark):
     m = fit(mark, int(S * 0.60), int(S * 0.60))
     mx = (S - m.size[0]) // 2
     my = int(S * 0.46) - m.size[1] // 2
-    # sombra sutil sob o símbolo
+    # Subtle shadow below the mark.
     sh = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     sh.paste((0, 0, 0, 160), (mx, my + int(S * 0.02)), m)
     sh = sh.filter(ImageFilter.GaussianBlur(14))
@@ -147,15 +147,15 @@ def make_icon(mark):
     out = os.path.join(OUT, "veloryft.ico")
     tile.save(out, sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
     print("ok:", out)
-    tile.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, "veloryft-256.png"))
+    tile.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, "veloryft_256.png"))
 
-# --- banners do wizard -----------------------------------------------------
+# --- wizard banners --------------------------------------------------------
 
 def make_wizard_large(mark, word, scale):
     W, H = 164 * scale, 314 * scale
     img = vgradient((W, H), BG_TOP, BG_BOT).convert("RGBA")
 
-    # faixa diagonal azul bem sutil (movimento)
+    # Subtle diagonal blue streak suggests motion.
     streak = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ds = ImageDraw.Draw(streak)
     ds.polygon([(0, int(H * 0.30)), (W, int(H * 0.10)), (W, int(H * 0.16)), (0, int(H * 0.38))],
@@ -189,14 +189,14 @@ def make_wizard_large(mark, word, scale):
                         radius=9 * scale, fill=BLUE)
     d.text((bx0 + pad, by0 + 3 * scale), label, font=f_beta, fill=(255, 255, 255))
 
-    # rodapé
+    # Footer.
     f_foot = font("segoeui.ttf", 9 * scale)
     foot = "veloryft.com"
     fw = d.textlength(foot, font=f_foot)
     d.text(((W - fw) / 2, H - 22 * scale), foot, font=f_foot, fill=(90, 105, 130))
 
-    suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(OUT, f"wizard-large{suffix}.bmp")
+    suffix = "" if scale == 1 else "_2x"
+    out = os.path.join(OUT, f"wizard_large{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -209,8 +209,8 @@ def make_wizard_small(mark, scale):
                                                      Image.new("RGBA", (W, H), (0, 0, 0, 0)), glow))
     m = fit(mark, int(W * 0.72), int(H * 0.72))
     img.paste(m, ((W - m.size[0]) // 2, (H - m.size[1]) // 2), m)
-    suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(OUT, f"wizard-small{suffix}.bmp")
+    suffix = "" if scale == 1 else "_2x"
+    out = os.path.join(OUT, f"wizard_small{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -252,8 +252,8 @@ def make_wizard_large_light(mark, word, scale):
     fw = d.textlength(foot, font=f_foot)
     d.text(((W - fw) / 2, H - 22 * scale), foot, font=f_foot, fill=(78, 101, 137))
 
-    suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(OUT, f"wizard-large-light{suffix}.bmp")
+    suffix = "" if scale == 1 else "_2x"
+    out = os.path.join(OUT, f"wizard_large_light{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
@@ -268,18 +268,18 @@ def make_wizard_small_light(mark, scale):
     )
     m = fit(tint_for_light_surface(mark), int(W * 0.72), int(H * 0.72))
     img.paste(m, ((W - m.size[0]) // 2, (H - m.size[1]) // 2), m)
-    suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(OUT, f"wizard-small-light{suffix}.bmp")
+    suffix = "" if scale == 1 else "_2x"
+    out = os.path.join(OUT, f"wizard_small_light{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 
 
 def make_theme_page_bg(mark, word, scale):
-    """Background para a pagina custom de tema (layout estilo marketing)."""
+    """Generate the marketing-style background for the custom theme page."""
     W, H = 920 * scale, 520 * scale
     img = vgradient((W, H), (6, 14, 30), (3, 8, 18)).convert("RGBA")
 
-    # brilho de fundo, puxando o foco para o centro-direita
+    # Background glow draws focus toward the center-right.
     glow, layer = blue_glow((W, H), (int(W * 0.68), int(H * 0.22)), int(W * 0.45), 85)
     img = Image.alpha_composite(
         img,
@@ -298,7 +298,7 @@ def make_theme_page_bg(mark, word, scale):
         fill=(4, 14, 32, 105),
     )
 
-    # divisoria entre coluna de opcoes e hero
+    # Divider between the options column and hero artwork.
     split_x = int(W * 0.53)
     d.line(
         [(split_x, int(H * 0.09)), (split_x, int(H * 0.91))],
@@ -306,14 +306,14 @@ def make_theme_page_bg(mark, word, scale):
         width=max(1, 2 * scale),
     )
 
-    # pequenas barras de acento no titulo
+    # Small accent bars in the title.
     d.rounded_rectangle(
         [int(W * 0.05), int(H * 0.14), int(W * 0.09), int(H * 0.147)],
         radius=4 * scale,
         fill=BLUE,
     )
 
-    # cards de opcao (guias visuais para os radios sobrepostos no setup)
+    # Option cards are visual guides for the radio buttons overlaid by setup.
     card_left = int(W * 0.05)
     card_right = int(W * 0.46)
     card_h = int(H * 0.12)
@@ -331,7 +331,7 @@ def make_theme_page_bg(mark, word, scale):
             fill=fill,
         )
 
-    # painel da arte hero
+    # Hero artwork panel.
     hero_x0 = int(W * 0.56)
     hero_y0 = int(H * 0.10)
     hero_x1 = int(W * 0.94)
@@ -344,7 +344,7 @@ def make_theme_page_bg(mark, word, scale):
         fill=(2, 10, 24, 170),
     )
 
-    # arte interna do hero com marca
+    # Branded artwork inside the hero panel.
     hero_w = hero_x1 - hero_x0 - 16 * scale
     hero_h = hero_y1 - hero_y0 - 16 * scale
     hero = vgradient((hero_w, hero_h), (6, 16, 38), (2, 8, 20)).convert("RGBA")
@@ -366,8 +366,8 @@ def make_theme_page_bg(mark, word, scale):
 
     img.paste(hero, (hero_x0 + 8 * scale, hero_y0 + 8 * scale), hero)
 
-    suffix = "" if scale == 1 else "@2x"
-    out = os.path.join(OUT, f"theme-page-bg{suffix}.bmp")
+    suffix = "" if scale == 1 else "_2x"
+    out = os.path.join(OUT, f"theme_page_bg{suffix}.bmp")
     img.convert("RGB").save(out)
     print("ok:", out)
 

@@ -21,6 +21,8 @@ use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::core::PCWSTR;
 use windows_numerics::Vector2;
 
+use crate::localization::text as localized_text;
+
 use super::geometry::{CL_RIGHT_R, CL_RIGHT_X};
 use super::theme::{
     glass_colors, Theme, C_AMBER, C_GRAY, C_GREEN, C_RED, C_TRACK, C_TRACK_EDGE, C_WHITE, THEME,
@@ -49,7 +51,7 @@ pub(crate) struct Brushes {
     pub gray: ID2D1SolidColorBrush,
     pub scratch: ID2D1SolidColorBrush,
     pub grad: ID2D1LinearGradientBrush,
-    /// Fundo do card (gradiente vertical) — recriado quando opacidade/tom mudam.
+    /// Card background (vertical gradient), rebuilt when opacity or tint changes.
     pub glass: RefCell<GlassCache>,
     pub design_h: f32,
 }
@@ -97,7 +99,7 @@ pub(crate) fn make_glass_brush(
 }
 
 impl Brushes {
-    /// Brush do vidro para o tema atual — reusa o cache se opacidade/tom não mudaram.
+    /// Glass brush for the current theme, reusing the cache while opacity and tint match.
     pub fn glass(&self, rt: &ID2D1RenderTarget, t: Theme) -> Result<ID2D1LinearGradientBrush> {
         let key = glass_key(t);
         {
@@ -177,6 +179,12 @@ impl Brushes {
 pub(crate) fn make_fonts() -> Result<Fonts> {
     unsafe {
         let dwrite: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
+        let locale: Vec<u16> = localized_text()
+            .language_tag
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let locale = PCWSTR(locale.as_ptr());
         let make = |family: PCWSTR,
                     size: f32,
                     weight: DWRITE_FONT_WEIGHT,
@@ -190,14 +198,14 @@ pub(crate) fn make_fonts() -> Result<Fonts> {
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
                 size,
-                w!("pt-BR"),
+                locale,
             )?;
             fmt.SetTextAlignment(align)?;
             fmt.SetParagraphAlignment(para)?;
             Ok(fmt)
         };
-        // Cortes ópticos do Segoe UI Variable (Win11): "Display" para números
-        // grandes, "Text" desenhado para 9–14px — nítido em texto pequeno.
+        // Segoe UI Variable optical cuts on Windows 11: Display for large
+        // numbers and Text, designed for 9–14 px, for crisp small labels.
         let display = w!("Segoe UI Variable Display");
         let text = w!("Segoe UI Variable Text");
         Ok(Fonts {

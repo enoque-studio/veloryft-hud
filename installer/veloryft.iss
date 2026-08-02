@@ -59,17 +59,17 @@ MinVersion=10.0
 WizardStyle=modern dynamic windows11 hidebevels
 WizardSizePercent=120
 DefaultDialogFontName=Segoe UI
-WizardImageFile=assets\wizard-large-light.bmp,assets\wizard-large-light@2x.bmp
-WizardImageFileDynamicDark=assets\wizard-large.bmp,assets\wizard-large@2x.bmp
-WizardSmallImageFile=assets\wizard-small-light.bmp,assets\wizard-small-light@2x.bmp
-WizardSmallImageFileDynamicDark=assets\wizard-small.bmp,assets\wizard-small@2x.bmp
+WizardImageFile=assets\wizard_large_light.bmp,assets\wizard_large_light_2x.bmp
+WizardImageFileDynamicDark=assets\wizard_large.bmp,assets\wizard_large_2x.bmp
+WizardSmallImageFile=assets\wizard_small_light.bmp,assets\wizard_small_light_2x.bmp
+WizardSmallImageFileDynamicDark=assets\wizard_small.bmp,assets\wizard_small_2x.bmp
 SetupIconFile=assets\veloryft.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 
 ; License terms (mandatory acceptance) + post-install quick-start guide.
-LicenseFile=EULA.txt
-InfoAfterFile=README.txt
+LicenseFile=eula.txt
+InfoAfterFile=readme.txt
 
 ; Packaging.
 Compression=lzma2/max
@@ -86,8 +86,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#MyBuildExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
-Source: "README.txt"; DestDir: "{app}"; DestName: "Read Me.txt"; Flags: ignoreversion isreadme
-Source: "EULA.txt"; DestDir: "{app}"; DestName: "License Agreement.txt"; Flags: ignoreversion
+Source: "readme.txt"; DestDir: "{app}"; DestName: "Read Me.txt"; Flags: ignoreversion isreadme
+Source: "eula.txt"; DestDir: "{app}"; DestName: "License Agreement.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

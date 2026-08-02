@@ -9,6 +9,7 @@ use windows::Win32::Graphics::Direct2D::*;
 use windows_numerics::Vector2;
 
 use super::Panel;
+use crate::localization::{distance_km, elevation_m, text};
 use crate::overlay::geometry::rectf;
 use crate::overlay::theme::{color, C_ELEV_LINE, C_ELEV_MARKER};
 use crate::telemetry::display::DisplayFrame;
@@ -16,6 +17,7 @@ use crate::telemetry::elevation::ElevationProfile;
 
 impl Panel {
     pub(super) fn draw_elevation(&self, f: &DisplayFrame, elev: &ElevationProfile, w: f32, h: f32) {
+        let messages = text();
         let pad = (w * 0.033).max(6.0);
         let head_h = (h * 0.13).max(22.0);
         let foot_h = (h * 0.12).max(18.0);
@@ -25,17 +27,17 @@ impl Panel {
         let chart_h = (chart_bot - chart_top).max(20.0);
 
         self.text(
-            "ELEVATION",
+            messages.elevation,
             &self.f.small_left,
             rectf(pad, pad * 0.4, pad + w * 0.45, head_h),
             &self.b.gray,
         );
         let lap = if elev.loop_closed {
-            format!("{:.2} km", elev.loop_km)
+            distance_km(elev.loop_km)
         } else if elev.lap_km > 0.0 {
-            format!("{:.2} km", elev.lap_km)
+            distance_km(elev.lap_km)
         } else {
-            "–".to_string()
+            messages.missing_value.to_string()
         };
         self.text(
             &lap,
@@ -156,19 +158,19 @@ impl Panel {
         }
 
         let min_l = if elev.pts.len() >= 2 {
-            format!("{} m", elev.min.round() as i32)
+            elevation_m(elev.min)
         } else {
-            "–".to_string()
+            messages.missing_value.to_string()
         };
         let max_l = if elev.pts.len() >= 2 {
-            format!("{} m", elev.max.round() as i32)
+            elevation_m(elev.max)
         } else {
-            "–".to_string()
+            messages.missing_value.to_string()
         };
         let foot_y = h - foot_h + h * 0.01;
         let foot_bot = h - pad * 0.4;
         self.text(
-            "MIN",
+            messages.minimum,
             &self.f.small_left,
             rectf(pad, foot_y, pad + w * 0.12, foot_bot),
             &self.b.gray,
@@ -180,7 +182,7 @@ impl Panel {
             &self.b.white,
         );
         self.text(
-            "MAX",
+            messages.maximum,
             &self.f.small_right,
             rectf(w - pad - w * 0.32, foot_y, w - pad - w * 0.2, foot_bot),
             &self.b.gray,
@@ -193,9 +195,9 @@ impl Panel {
         );
 
         let cur = if f.fresh {
-            format!("{} m", f.elev_m.round() as i32)
+            elevation_m(f.elev_m)
         } else {
-            "–".to_string()
+            messages.missing_value.to_string()
         };
         self.text(
             &cur,

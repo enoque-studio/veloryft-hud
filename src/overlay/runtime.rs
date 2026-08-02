@@ -36,6 +36,7 @@ use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::diagnostics::{log_error, log_info, log_warn};
+use crate::localization::text;
 use crate::overlay::track_recording::TrackRecording;
 use crate::telemetry::display::DisplaySmoother;
 use crate::telemetry::receiver;
@@ -80,17 +81,17 @@ thread_local! {
     pub(crate) static TOOLBAR_DOWN: Cell<i32> = const { Cell::new(HIT_NONE) };
 }
 
-// --- Toolbar de edição ---
+// --- Edit toolbar ---
 
 // ===================== GDI / D2D helpers =====================
 
-// ===================== Painel =====================
+// ===================== Panel =====================
 
-// ===================== Malha (fundo do modo edição) =====================
+// ===================== Grid (edit-mode background) =====================
 
-// ===================== toolbar de edição =====================
+// ===================== Edit toolbar =====================
 
-// ===================== persistência de layout =====================
+// ===================== Layout persistence =====================
 
 // ===================== window procs =====================
 
@@ -102,8 +103,8 @@ pub(crate) unsafe extern "system" fn panel_proc(
 ) -> LRESULT {
     if EDIT.load(Ordering::Relaxed) {
         match msg {
-            // Tudo área-cliente: cursor + arraste/resize manuais (sem o loop modal
-            // do OS), para o conteúdo escalar ao vivo durante o ajuste.
+            // The whole surface is client area. Manual cursor, drag, and resize
+            // avoid the OS modal loop so content scales live during adjustment.
             WM_NCHITTEST => return LRESULT(HTCLIENT as isize),
             WM_SETCURSOR => {
                 apply_cursor(hwnd);
@@ -122,7 +123,7 @@ pub(crate) unsafe extern "system" fn panel_proc(
                 return LRESULT(0);
             }
             WM_MOUSEWHEEL => {
-                // Roda do mouse gira o matiz do destaque.
+                // The mouse wheel rotates the accent hue.
                 let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
                 let mut t = THEME.get();
                 t.hue = (t.hue + (delta as f32 / 120.0) * 12.0).rem_euclid(360.0);
@@ -130,7 +131,7 @@ pub(crate) unsafe extern "system" fn panel_proc(
                 return LRESULT(0);
             }
             WM_RBUTTONDOWN => {
-                // Botão direito alterna: shift colore a marcha ou o card.
+                // Right-click switches whether shift color targets the gear or card.
                 let mut t = THEME.get();
                 t.gear_target = !t.gear_target;
                 THEME.set(t);
@@ -140,7 +141,7 @@ pub(crate) unsafe extern "system" fn panel_proc(
             _ => {}
         }
     } else if msg == WM_NCHITTEST {
-        // Fora de edição: transparente ao hit-test (clique vai pro jogo).
+        // Outside edit mode, hit testing is transparent so clicks reach the game.
         return LRESULT(HTTRANSPARENT as isize);
     }
     match msg {
@@ -206,7 +207,7 @@ unsafe extern "system" fn toolbar_proc(
             LRESULT(0)
         }
         WM_MOUSEMOVE => {
-            // Arrasto contínuo dos sliders do vidro (capture ativo).
+            // Continuously drag the glass sliders while capture is active.
             let down = TOOLBAR_DOWN.with(|v| v.get());
             if down == HIT_GLASS_ALPHA || down == HIT_GLASS_TONE {
                 let (x, _) = lparam_xy(lparam);
@@ -251,7 +252,7 @@ fn toggle_edit(panels: &mut [Panel], backdrop: &Backdrop, toolbar: &Toolbar) {
     if now {
         backdrop.show();
         for p in panels.iter() {
-            bring_to_top(p.hwnd); // painéis acima da malha
+            bring_to_top(p.hwnd); // panels above the grid
         }
         toolbar.show();
     } else {
@@ -314,8 +315,8 @@ fn toggle_hud_hidden(panels: &mut [Panel], backdrop: &Backdrop, toolbar: &Toolba
     }
 }
 
-/// Lê pos/tamanho atuais da janela (já encaixados na malha durante o arraste)
-/// e recria o DIB se o tamanho mudou.
+/// Read the window's current position and size after drag-time grid snapping,
+/// and recreate the DIB if its size changed.
 fn sync_panel_geometry(p: &mut Panel) {
     let r = window_rect(p.hwnd);
     p.pos = POINT {
@@ -418,7 +419,7 @@ pub fn run() -> Result<()> {
             .iter()
             .find(|panel| panel.kind == Kind::Cluster)
             .map(throttle_placement)
-            .expect("painel cluster ausente");
+            .expect("cluster panel is missing");
         let throttle_placement_state = Arc::new(Mutex::new(initial_throttle));
         let _throttle_thread =
             spawn_critical_throttle(shared.clone(), throttle_placement_state.clone());
@@ -440,25 +441,18 @@ pub fn run() -> Result<()> {
         }) {
             Ok(_) => log_info!("listening for Forza telemetry on 0.0.0.0:{port}"),
             Err(cause) => crate::diagnostics::report_startup_failure(
-                &format!(
-                    "Veloryft could not listen for Forza telemetry on UDP port {port}.\n\n\
-                     Another program is probably already using it. Close it, or set \
-                     {UDP_PORT_VAR} to a free port and set the same port in the game's \
-                     Data Out settings.\n\n\
-                     The overlay will keep running, but it will stay hidden until it \
-                     receives telemetry."
-                ),
+                &crate::localization::udp_bind_failure(port, UDP_PORT_VAR),
                 &format_args!("binding 0.0.0.0:{port} failed: {cause}"),
             ),
         }
 
-        // Ícone na bandeja do sistema: janela mensagem-only (invisível) só para
-        // receber os cliques do ícone; por padrão o Windows o coloca entre os
-        // "ícones ocultos" até o usuário fixá-lo na bandeja visível.
+        // The tray uses an invisible message-only window to receive icon clicks.
+        // Windows initially files the icon under hidden icons until the user pins it.
+        let app_name = wide_buf::<64>(text().app_name);
         let tray_hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             tray_class,
-            w!("Veloryft"),
+            PCWSTR(app_name.as_ptr()),
             WINDOW_STYLE(0),
             0,
             0,
@@ -486,7 +480,7 @@ pub fn run() -> Result<()> {
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAYICON,
             hIcon: tray_icon,
-            szTip: wide_buf("Veloryft"),
+            szTip: wide_buf(text().app_name),
             ..Default::default()
         };
         if !Shell_NotifyIconW(NIM_ADD, &tray_nid).as_bool() {

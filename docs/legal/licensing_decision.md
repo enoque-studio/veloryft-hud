@@ -117,11 +117,11 @@ contradiction; it did not turn an untested document into a tested one.
 | [NOTICE](../../NOTICE) | Attribution, as Apache-2.0 section 4 requires |
 | [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) | Dependencies, their licenses, and the unresolved data provenance |
 | [TRADEMARKS.md](../../TRADEMARKS.md) | What the name and logo do and do not permit |
-| `installer/EULA.txt` | Binary distribution terms, revised, draft |
+| `installer/eula.txt` | Binary distribution terms, revised, draft |
 
 ## Still open
 
-**`data/car-ordinals.json` has no established provenance.** It arrived in the
+**`data/car_ordinals.json` has no established provenance.** It arrived in the
 initial commit with no source, author, or license. This is a release blocker,
 independent of the source license, and is documented in
 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

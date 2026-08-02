@@ -189,12 +189,9 @@ pub fn report_startup_failure(summary: &str, detail: &fmt::Arguments<'_>) {
         use windows::core::PCWSTR;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
-        let body = format!(
-            "{summary}\n\nTechnical detail:\n{detail}\n\nA full log is kept in:\n{}",
-            paths::log_dir().display()
-        );
+        let body = crate::localization::startup_failure_body(summary, detail, &paths::log_dir());
         let body = wide(&body);
-        let title = wide("Veloryft could not start");
+        let title = wide(crate::localization::text().startup_dialog_title);
         // SAFETY: both pointers refer to local NUL-terminated UTF-16 buffers that
         // outlive the call, and a null owner window is valid for a modal box.
         unsafe {

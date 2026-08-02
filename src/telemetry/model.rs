@@ -1,5 +1,5 @@
-//! Telemetria derivada do pacote Forza. Nomes de campo compatíveis com o
-//! `backend/payload.py` original (porta do parser Python).
+//! Telemetry derived from Forza packets. Field names remain compatible with the
+//! original `backend/payload.py` contract ported from the Python parser.
 
 use serde::Serialize;
 
@@ -8,7 +8,7 @@ use super::vehicle_catalog;
 
 #[derive(Serialize, Clone, Default)]
 pub struct Telemetry {
-    /// is_race_on (0 em free roam).
+    /// `is_race_on`, which is zero in free roam.
     pub race: i32,
     /// "Sled" | "Dash" | "FH6".
     pub fmt: &'static str,
@@ -16,24 +16,24 @@ pub struct Telemetry {
     pub rpm: f32,
     pub max_rpm: f32,
     pub idle_rpm: f32,
-    /// ID único make/model (bloco BASE).
+    /// Unique make/model ID from the BASE block.
     pub car_ordinal: i32,
-    /// Nome legível — resolvido via `data/car-ordinals.json`.
+    /// Human-readable name resolved through `data/car_ordinals.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub car_name: Option<String>,
-    /// Grupo/classe do carro (FH6) — muda ao trocar de veículo.
+    /// FH6 car group/class, which changes when the vehicle changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub car_group: Option<u32>,
-    /// 1 quando o pacote é apenas Sled (sem campos de dashboard).
+    /// One for a Sled-only packet with no dashboard fields.
     pub sled_only: u8,
 
-    // Forças G e slip vêm do bloco BASE (presentes mesmo em Sled).
+    // G-forces and slip come from BASE and are present even in Sled packets.
     pub lat_g: f32,
     pub long_g: f32,
-    /// combined_slip por roda [FL, FR, RL, RR] — ~1.0 = limite de aderência.
+    /// Per-wheel combined slip [FL, FR, RL, RR]; approximately 1.0 is the grip limit.
     pub slip: [f32; 4],
 
-    // Campos de dashboard — omitidos no formato Sled.
+    // Dashboard fields, omitted from the Sled format.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<f32>, // km/h
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,24 +48,24 @@ pub struct Telemetry {
     pub steer: Option<f32>, // -100..100
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fuel: Option<f32>, // 0..100
-    /// Potência instantânea (cv) — dash-only, watts / 745.7.
+    /// Instantaneous metric horsepower, Dash-only, calculated as watts / 745.7.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power_hp: Option<f32>,
-    /// Temperatura dos pneus [FL, FR, RL, RR] (dash-only).
+    /// Tire temperatures [FL, FR, RL, RR], Dash-only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tires: Option<[f32; 4]>,
-    /// Posição mundial [x, y, z] em metros (dash-only). `y` = elevação.
+    /// World position [x, y, z] in metres (Dash-only); `y` is elevation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pos: Option<[f32; 3]>,
-    /// Vibração da superfície por roda [FL, FR, RL, RR] — base p/ inferir o tipo
-    /// de terreno/via no mapa do mundo (~0 asfalto, alto terra/grama).
+    /// Per-wheel surface rumble [FL, FR, RL, RR], used to infer the surface type.
+    /// Near zero means asphalt; high values indicate dirt or grass.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub surf_rumble: Option<[f32; 4]>,
-    /// Profundidade de poça/água por roda [FL, FR, RL, RR] — classe Água do mapa.
+    /// Per-wheel puddle depth [FL, FR, RL, RR], used for the map's water class.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub puddle: Option<[f32; 4]>,
 
-    /// Contador monotônico de pacotes — dedupe/diagnóstico no front.
+    /// Monotonic packet counter for deduplication and diagnostics.
     pub _pkt: u64,
 }
 

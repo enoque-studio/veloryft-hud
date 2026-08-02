@@ -6,7 +6,6 @@
 //! tells people to look there first.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use windows::core::w;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, POINT};
 
@@ -23,7 +22,7 @@ pub(crate) const ID_TRAY_EXIT: usize = 1002;
 /// nested message loop, where touching the panels would re-enter the renderer.
 pub(crate) static TRAY_TOGGLE_HIDE: AtomicBool = AtomicBool::new(false);
 
-/// Codifica uma string curta como `szTip`/`szInfo` (UTF-16, terminado em nulo).
+/// Encode a short string as a NUL-terminated UTF-16 `szTip`/`szInfo` buffer.
 pub(crate) fn wide_buf<const N: usize>(s: &str) -> [u16; N] {
     let mut buf = [0u16; N];
     for (i, c) in s.encode_utf16().take(N - 1).enumerate() {
@@ -32,18 +31,21 @@ pub(crate) fn wide_buf<const N: usize>(s: &str) -> [u16; N] {
     buf
 }
 
-/// Menu de contexto do ícone na bandeja (clique direito): mostrar/ocultar e sair.
-/// Os comandos só sinalizam via atomics/`PostQuitMessage` — o loop principal
-/// (dono de `panels`/`backdrop`/`toolbar`) é quem de fato aplica o efeito.
+/// Show the tray icon's right-click menu: show/hide and exit.
+/// Commands only signal through atomics or `PostQuitMessage`; the main loop,
+/// which owns the panels, backdrop, and toolbar, applies the effect.
 pub(crate) unsafe fn show_tray_menu(hwnd: HWND) {
     let Ok(hmenu) = CreatePopupMenu() else { return };
-    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_TOGGLE, w!("Show/Hide HUD"));
+    let messages = crate::localization::text();
+    let toggle = wide_buf::<64>(messages.tray_show_hide_hud);
+    let exit = wide_buf::<64>(messages.tray_exit);
+    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_TOGGLE, PCWSTR(toggle.as_ptr()));
     let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
-    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_EXIT, w!("Exit"));
+    let _ = AppendMenuW(hmenu, MF_STRING, ID_TRAY_EXIT, PCWSTR(exit.as_ptr()));
 
     let mut pt = POINT { x: 0, y: 0 };
     let _ = GetCursorPos(&mut pt);
-    // Necessário para o menu fechar sozinho ao perder o foco (peculiaridade do Win32).
+    // Win32 requires this for the menu to close when it loses focus.
     let _ = SetForegroundWindow(hwnd);
     let cmd = TrackPopupMenuEx(
         hmenu,

@@ -69,8 +69,8 @@ pub(crate) fn throttle_placement(cluster: &Panel) -> ThrottlePlacement {
     }
 }
 
-/// Superfície mínima e independente para o acelerador. O raster é forçado para
-/// software; somente o bitmap final pequeno atravessa o DWM.
+/// Minimal independent throttle surface. Rasterization is forced to software;
+/// only the small final bitmap crosses the DWM boundary.
 struct CriticalThrottleSurface {
     hwnd: HWND,
     memdc: HDC,
@@ -79,6 +79,7 @@ struct CriticalThrottleSurface {
     rt: ID2D1RenderTarget,
     brushes: Brushes,
     fonts: Fonts,
+    label: Vec<u16>,
     placement: ThrottlePlacement,
     shown: bool,
     paint_key: u64,
@@ -102,6 +103,10 @@ impl CriticalThrottleSurface {
         let rt: ID2D1RenderTarget = dcrt.cast()?;
         unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE) };
         let brushes = Brushes::new(&rt, TH_H as f32)?;
+        let label = crate::localization::text()
+            .throttle
+            .encode_utf16()
+            .collect();
         unsafe {
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
@@ -113,6 +118,7 @@ impl CriticalThrottleSurface {
             rt,
             brushes,
             fonts,
+            label,
             placement,
             shown: false,
             paint_key: 0,
@@ -192,9 +198,8 @@ impl CriticalThrottleSurface {
             self.dcrt.BindDC(self.memdc, &full)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
-            let label: Vec<u16> = "THROTTLE".encode_utf16().collect();
             self.rt.DrawText(
-                &label,
+                &self.label,
                 &self.fonts.small_left,
                 &rectf(0.0, 0.0, label_w, h),
                 &self.brushes.gray,
@@ -262,8 +267,8 @@ pub(crate) fn spawn_critical_throttle(
     thread::Builder::new()
         .name("critical-throttle-d2d".into())
         .spawn(move || unsafe {
-            // Prioridade alta (não realtime): o trabalho desta thread é curto e
-            // ela bloqueia entre frames, evitando disputar CPU com o jogo.
+            // High priority, not realtime: this thread does brief work and blocks
+            // between frames, avoiding sustained CPU competition with the game.
             if SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST).is_err() {
                 log_warn!("could not raise the critical throttle thread priority");
             }
@@ -355,5 +360,5 @@ pub(crate) fn spawn_critical_throttle(
                 }
             }
         })
-        .expect("falha ao iniciar thread crítica do acelerador")
+        .expect("failed to start the critical throttle thread")
 }

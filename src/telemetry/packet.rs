@@ -1,32 +1,32 @@
-//! Decodifica os pacotes UDP "Data Out" do Forza (Sled / Dash / FH6).
-//! Layout idêntico ao de `backend/packet.py`. Leitura por offset, zero-copy:
-//! recebemos um `&[u8]` e expomos acessores que lêem little-endian sob demanda.
+//! Decode Forza Data Out UDP packets in Sled, Dash, and FH6 formats.
+//! Layout compatible with `backend/packet.py`. Offset-based, zero-copy reads:
+//! the parser receives a `&[u8]` and exposes little-endian accessors on demand.
 
 pub const SLED_SIZE: usize = 232;
 pub const DASH_SIZE: usize = 311;
 pub const FH6_SIZE: usize = 323;
 
-/// Offsets (bytes) no bloco BASE — todos os 58 campos têm 4 bytes (índice * 4).
+/// Byte offsets in the BASE block; all 58 fields are four bytes (`index * 4`).
 mod base {
     pub const IS_RACE_ON: usize = 0;
     pub const TIMESTAMP_MS: usize = 4;
     pub const ENGINE_MAX_RPM: usize = 8;
     pub const ENGINE_IDLE_RPM: usize = 12;
     pub const ENGINE_RPM: usize = 16;
-    pub const ACCEL_X: usize = 20; // campo 5 — aceleração lateral (G)
-    pub const ACCEL_Z: usize = 28; // campo 7 — aceleração longitudinal (G)
-                                   // Sinais de superfície (4 rodas FL/FR/RL/RR), usados para inferir o tipo de
-                                   // terreno/via no mapa do mundo. Ficam no bloco BASE → válidos em qualquer formato.
-    pub const WHEEL_ON_RUMBLE_FL: usize = 116; // campo 29 — zebra (0/1)
-    pub const WHEEL_IN_PUDDLE_FL: usize = 132; // campo 33 — profundidade de poça/água
-    pub const SURFACE_RUMBLE_FL: usize = 148; // campo 37 — vibração da superfície
+    pub const ACCEL_X: usize = 20; // field 5: lateral acceleration (G)
+    pub const ACCEL_Z: usize = 28; // field 7: longitudinal acceleration (G)
+                                   // Surface signals for FL/FR/RL/RR infer terrain in the world map.
+                                   // They live in BASE, so every packet format carries them.
+    pub const WHEEL_ON_RUMBLE_FL: usize = 116; // field 29: rumble strip (0/1)
+    pub const WHEEL_IN_PUDDLE_FL: usize = 132; // field 33: puddle/water depth
+    pub const SURFACE_RUMBLE_FL: usize = 148; // field 37: surface rumble
     pub const COMBINED_SLIP_FL: usize = 180; // campo 45
     pub const COMBINED_SLIP_FR: usize = 184;
     pub const COMBINED_SLIP_RL: usize = 188;
     pub const COMBINED_SLIP_RR: usize = 192;
 }
 
-/// Offsets relativos ao início do bloco DASH (após BASE, e após FH6_EXTRA no FH6).
+/// Offsets relative to the DASH block (after BASE and, for FH6, FH6_EXTRA).
 mod dash {
     pub const POS_X: usize = 0;
     pub const POS_Y: usize = 4;
@@ -44,15 +44,15 @@ mod dash {
     pub const STEER: usize = 76; // i8
 }
 
-/// Início do bloco DASH no Dash clássico (logo após os 232 bytes de BASE).
+/// Start of the DASH block in classic Dash packets, after the 232-byte BASE.
 const DASH_BASE_CLASSIC: usize = SLED_SIZE;
-/// FH6: car_group (u32) + 2× f32 reservados antes do bloco DASH.
+/// FH6: `car_group` (`u32`) plus two reserved `f32` values before the DASH block.
 const FH6_CAR_GROUP: usize = SLED_SIZE;
-/// Início do bloco DASH no FH6 (BASE + FH6_EXTRA de 12 bytes: car_group + 2 f32).
+/// Start of the FH6 DASH block: BASE plus 12-byte FH6_EXTRA (`car_group` + two `f32`s).
 const DASH_BASE_FH6: usize = SLED_SIZE + 12;
-/// BASE campo 53 — ID único make/model.
+/// BASE field 53: unique make/model ID.
 const BASE_CAR_ORDINAL: usize = 212;
-/// DASH rel 16 — potência instantânea (watts).
+/// DASH relative offset 16: instantaneous power in watts.
 const DASH_POWER: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -85,11 +85,11 @@ fn u32_at(b: &[u8], o: usize) -> u32 {
     u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
 }
 
-/// Visão sobre um datagrama já validado por tamanho.
+/// A view over a datagram whose size has already been validated.
 pub struct Packet<'a> {
     pub format: Format,
     pub sled_only: bool,
-    dash_base: usize, // início do bloco DASH (irrelevante se sled_only)
+    dash_base: usize, // DASH block start; irrelevant for Sled-only packets
     buf: &'a [u8],
 }
 
@@ -125,7 +125,7 @@ impl<'a> Packet<'a> {
         ]
     }
 
-    /// 4 valores consecutivos de f32 a partir de um offset BASE (FL, FR, RL, RR).
+    /// Four consecutive `f32` values from a BASE offset (FL, FR, RL, RR).
     #[inline]
     fn base_quad(&self, off: usize) -> [f32; 4] {
         [
@@ -136,15 +136,15 @@ impl<'a> Packet<'a> {
         ]
     }
 
-    /// Vibração da superfície por roda — ~0 em asfalto liso, alto em terra/grama.
+    /// Per-wheel surface rumble: near zero on smooth asphalt, high on dirt/grass.
     pub fn surface_rumble(&self) -> [f32; 4] {
         self.base_quad(base::SURFACE_RUMBLE_FL)
     }
-    /// Profundidade de poça/água por roda — > 0 em vaus e poças.
+    /// Per-wheel puddle/water depth, greater than zero in puddles and fords.
     pub fn wheel_in_puddle(&self) -> [f32; 4] {
         self.base_quad(base::WHEEL_IN_PUDDLE_FL)
     }
-    /// Roda sobre zebra (rumble strip) por roda — pista, não terreno aberto.
+    /// Per-wheel rumble-strip contact, which indicates track rather than open terrain.
     pub fn wheel_on_rumble_strip(&self) -> [f32; 4] {
         self.base_quad(base::WHEEL_ON_RUMBLE_FL)
     }
@@ -152,7 +152,7 @@ impl<'a> Packet<'a> {
         i32_at(self.buf, BASE_CAR_ORDINAL)
     }
 
-    /// Identificador de grupo/classe do carro (FH6). Útil para detectar troca de veículo.
+    /// FH6 car group/class identifier, useful for detecting vehicle changes.
     pub fn car_group(&self) -> Option<u32> {
         if self.format == Format::Fh6 && self.buf.len() >= DASH_BASE_FH6 {
             Some(u32_at(self.buf, FH6_CAR_GROUP))
@@ -161,7 +161,7 @@ impl<'a> Packet<'a> {
         }
     }
 
-    // --- DASH (válido apenas quando !sled_only) ---
+    // --- DASH (valid only when `!sled_only`) ---
     #[inline]
     fn d_f32(&self, rel: usize) -> f32 {
         f32_at(self.buf, self.dash_base + rel)
@@ -225,9 +225,9 @@ impl<'a> Packet<'a> {
     }
 }
 
-/// Heurística de desempate FH6 × Dash — porta de `_dash_score`.
-/// Comparações com NaN retornam `false` em Rust, então caem no ramo "inválido"
-/// igual ao `v == v` do Python.
+/// Heuristic that distinguishes FH6 from Dash packets, ported from `_dash_score`.
+/// Rust comparisons with NaN return `false`, so they take the invalid branch just
+/// like Python's `v == v` check.
 fn dash_score(p: &Packet) -> i32 {
     let mut score = 0;
 
@@ -252,8 +252,8 @@ fn dash_score(p: &Packet) -> i32 {
     score
 }
 
-/// Decodifica um datagrama. Escolhe o formato pelo tamanho e, quando o pacote é
-/// grande o suficiente para ser FH6, desempata por pontuação (igual ao Python).
+/// Decode a datagram by size, using the score to disambiguate packets large
+/// enough to be FH6. This matches the Python implementation.
 pub fn parse(data: &[u8]) -> Option<Packet<'_>> {
     let n = data.len();
     if n >= DASH_SIZE {
@@ -299,13 +299,13 @@ mod tests {
     }
 
     #[test]
-    fn datagrama_pequeno_e_descartado() {
+    fn too_short_datagram_is_rejected() {
         assert!(parse(&[0u8; 100]).is_none());
         assert!(parse(&[0u8; SLED_SIZE - 1]).is_none());
     }
 
     #[test]
-    fn tamanho_sled_vira_sled() {
+    fn sled_size_is_classified_as_sled() {
         let buf = vec![0u8; SLED_SIZE];
         let p = parse(&buf).unwrap();
         assert_eq!(p.format, Format::Sled);
@@ -313,9 +313,9 @@ mod tests {
     }
 
     #[test]
-    fn dash_le_campos_nos_offsets_certos() {
-        // Offsets calculados à mão (independente das constantes do módulo) para
-        // pegar transposições: base[i] = i*4; bloco dash começa em 232.
+    fn dash_reads_fields_at_the_expected_offsets() {
+        // Hand-calculated offsets, independent of module constants, catch
+        // transpositions: base[i] = i*4 and the Dash block starts at 232.
         let mut buf = vec![0u8; DASH_SIZE];
         put_i32(&mut buf, 0, 1); // is_race_on (campo 0)
         put_f32(&mut buf, 8, 8000.0); // engine_max_rpm (campo 2)
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_converte_unidades() {
+    fn telemetry_converts_wire_units() {
         let mut buf = vec![0u8; DASH_SIZE];
         put_f32(&mut buf, 16, 6000.0); // rpm
         put_f32(&mut buf, 232 + 12, 50.0); // speed 50 m/s -> 180 km/h

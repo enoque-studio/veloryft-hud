@@ -30,8 +30,8 @@ winget install --id JRSoftware.InnoSetup
 | File | Installed as |
 | ---- | ------------ |
 | `target/release/veloryft.exe` | `Veloryft.exe` |
-| `installer/README.txt` | `Read Me.txt` |
-| `installer/EULA.txt` | `License Agreement.txt` |
+| `installer/readme.txt` | `Read Me.txt` |
+| `installer/eula.txt` | `License Agreement.txt` |
 
 Plus Start menu shortcuts, an uninstaller, and an optional desktop icon that is
 unchecked by default.
@@ -108,7 +108,7 @@ who want a clean slate are told how in
 
 ## The EULA
 
-`installer/EULA.txt`, which the wizard requires the user to accept.
+`installer/eula.txt`, which the wizard requires the user to accept.
 
 It covers the official prebuilt binary: warranty disclaimers, beta status,
 privacy behaviour, and trademark notices. It explicitly does **not** restrict

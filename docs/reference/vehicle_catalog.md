@@ -6,7 +6,7 @@ ordinal to a readable name using a catalog.
 
 ## Where the catalog comes from
 
-The catalog is `data/car-ordinals.json`, embedded into the binary at compile
+The catalog is `data/car_ordinals.json`, embedded into the binary at compile
 time. Installed and portable builds therefore always have it, with no file
 beside the executable.
 
@@ -32,7 +32,7 @@ recompiling:
 $env:FORZA_CAR_ORDINALS = "C:\Users\me\my-cars.json"
 ```
 
-Veloryft also looks for `data/car-ordinals.json` in the working directory and
+Veloryft also looks for `data/car_ordinals.json` in the working directory and
 next to the executable, in that order. The first file that loads and is
 non-empty wins; the embedded copy is the fallback.
 
@@ -56,7 +56,7 @@ car still learns normally.
 
 ## Licensing
 
-**The provenance of `data/car-ordinals.json` is unresolved, and that is a
+**The provenance of `data/car_ordinals.json` is unresolved, and that is a
 release blocker.** It was added in the repository's initial commit with no
 recorded source, author, or license.
 

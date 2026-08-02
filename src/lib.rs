@@ -26,6 +26,7 @@
 
 pub mod application;
 pub mod diagnostics;
+pub mod localization;
 pub mod paths;
 pub mod telemetry;
 /// Derivation of the Windows version resource from the Cargo package version.
@@ -40,8 +41,7 @@ pub mod version;
 #[cfg(windows)]
 pub(crate) mod overlay;
 
-/// World-height recording and its loopback API. Compiled only with the
-/// `track_mapping` feature — see
-/// `docs/decisions/adr_0004_track_mapping_feature.md`.
+// World-height recording and its loopback API. Compiled only with the
+// `track_mapping` feature — see docs/decisions/adr_0004_track_mapping_feature.md.
 #[cfg(feature = "track_mapping")]
 pub mod track_mapping;

@@ -1,13 +1,13 @@
-//! Quando o HUD Direct2D deve aparecer — espelha `isRacing` do apex-flow.
+//! Decide when the Direct2D HUD should appear, mirroring apex-flow's `isRacing`.
 //!
-//! `is_race_on` = 0 em menu, pausa, foto e cinemáticas. Em free roam exige
-//! movimento real do jogador (não só velocidade scriptada de cutscene).
+//! `is_race_on == 0` in menus, pause, photo mode, and cinematics. Free roam
+//! requires real driver activity rather than scripted cutscene motion.
 
 use super::model::Telemetry;
 
-/// Idade máxima do pacote (s) para considerar fallback de movimento.
+/// Maximum packet age in seconds for considering the movement fallback.
 pub const DRIVING_AGE_S: f32 = 0.9;
-/// Sem pacote além disso → HUD some (jogo fechado / UDP parado).
+/// Without a packet beyond this threshold, hide the HUD (game closed or UDP stopped).
 pub const STALE_S: f32 = 1.5;
 
 #[inline]
@@ -18,16 +18,16 @@ fn has_driver_input(snap: &Telemetry) -> bool {
         || snap.steer.map(|s| s.abs() > 2.0).unwrap_or(false)
 }
 
-/// HUD visível apenas enquanto o jogador está dirigindo (não em menu/cinemática).
+/// Show the HUD only while the player is driving, not in menus or cinematics.
 pub fn is_hud_visible(snap: &Telemetry, age_s: f32) -> bool {
     if snap.sled_only != 0 || age_s > STALE_S {
         return false;
     }
-    // Corrida/crono ativo — some quando o jogo zera `is_race_on` (menu/pausa).
+    // An active race/timer remains visible until the game clears `is_race_on`.
     if snap.race != 0 {
         return true;
     }
-    // Free roam: menu, pausa e cutscenes usam race=0.
+    // In free roam, menus, pause, and cutscenes use race=0.
     if age_s > DRIVING_AGE_S {
         return false;
     }
@@ -35,12 +35,12 @@ pub fn is_hud_visible(snap: &Telemetry, age_s: f32) -> bool {
     let rpm = snap.rpm;
     let idle = snap.idle_rpm;
 
-    // Parado no menu / tela de pausa.
+    // Parked in a menu or pause screen.
     if spd <= 6.0 && rpm <= idle + 200.0 {
         return false;
     }
 
-    // Cinemática: carro se move mas o jogador não manda input (câmera scriptada).
+    // Cinematic: the car moves without driver input under a scripted camera.
     if spd > 6.0 && !has_driver_input(snap) && rpm <= idle + 400.0 {
         return false;
     }
@@ -48,7 +48,7 @@ pub fn is_hud_visible(snap: &Telemetry, age_s: f32) -> bool {
     spd > 6.0 || rpm > idle + 200.0
 }
 
-/// Alias usado pelo gravador de pista / elevação (mesma regra de “dirigindo”).
+/// Alias used by track/elevation recording, with the same driving rule.
 pub fn is_driving(snap: &Telemetry, age_s: f32) -> bool {
     is_hud_visible(snap, age_s)
 }
@@ -70,20 +70,20 @@ mod tests {
     }
 
     #[test]
-    fn race_ligado_sempre_visivel() {
+    fn an_active_race_is_always_visible() {
         let mut t = dash();
         t.race = 1;
         assert!(is_hud_visible(&t, 0.0));
     }
 
     #[test]
-    fn menu_parado_esconde() {
+    fn a_stationary_menu_hides_the_hud() {
         let t = dash();
         assert!(!is_hud_visible(&t, 0.0));
     }
 
     #[test]
-    fn pausa_zera_race_esconde() {
+    fn clearing_race_state_on_pause_hides_the_hud() {
         let mut t = dash();
         t.race = 1;
         assert!(!is_hud_visible(&t, STALE_S + 0.1));
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn free_roam_dirigindo_mostra() {
+    fn driving_in_free_roam_shows_the_hud() {
         let mut t = dash();
         t.speed = Some(20.0);
         t.rpm = 3500.0;
@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn cinematica_sem_input_esconde() {
+    fn a_cinematic_without_input_hides_the_hud() {
         let mut t = dash();
         t.speed = Some(80.0);
         t.rpm = 900.0;
@@ -112,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn free_roam_com_acelerador_mostra() {
+    fn throttle_input_in_free_roam_shows_the_hud() {
         let mut t = dash();
         t.speed = Some(80.0);
         t.rpm = 900.0;
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn sled_only_nunca_visivel() {
+    fn a_sled_only_packet_is_never_visible() {
         let mut t = dash();
         t.sled_only = 1;
         t.race = 1;

@@ -11,6 +11,7 @@ use windows::Win32::Graphics::Direct2D::*;
 use windows_numerics::Vector2;
 
 use super::Panel;
+use crate::localization::{power_cv, text};
 use crate::overlay::geometry::{rectf, rounded};
 use crate::overlay::geometry::{
     CL_BAR_H, CL_BAR_X, CL_BRAKE_Y, CL_GEAR_W, CL_GEAR_Y_SHIFT, CL_H, CL_META_Y, CL_PAD,
@@ -70,12 +71,13 @@ impl Panel {
         w: f32,
         h: f32,
     ) {
+        let messages = text();
         let px = |x: f32| x / CL_W as f32 * w;
         let py = |y: f32| y / CL_H as f32 * h;
         let gear = match f.gear {
-            Some(0) => "R".to_string(),
+            Some(0) => messages.reverse_gear.to_string(),
             Some(g) => g.to_string(),
-            None => "–".to_string(),
+            None => messages.missing_value.to_string(),
         };
         if f.near && gear_accent {
             unsafe { self.b.scratch.SetColor(&accent) };
@@ -124,9 +126,9 @@ impl Panel {
                 );
             }
 
-            // Zona de troca aprendida por carro (revlimit): banda vermelha do
-            // ponto de troca até o corte, tick branco na troca, tick vermelho
-            // no corte quando o limitador já foi observado.
+            // Vehicle-specific learned shift zone: a red band from the shift
+            // point to the limiter, a white tick at the shift point, and a red
+            // tick at the limiter once it has been observed.
             if f.shift_frac > 0.05 && f.shift_frac < 0.995 {
                 let bar_x0 = px(CL_RIGHT_X);
                 let bw = px(CL_RIGHT_R) - bar_x0;
@@ -189,7 +191,7 @@ impl Panel {
             &self.b.gray,
         );
         if f.show_power {
-            let power = format!("{} hp", f.power_cv.round() as i32);
+            let power = power_cv(f.power_cv);
             self.text(
                 &power,
                 &self.f.small_right,
@@ -216,7 +218,7 @@ impl Panel {
             &self.b.white,
         );
         self.text(
-            "km/h",
+            messages.kilometres_per_hour,
             &self.f.small_left,
             rectf(
                 px(CL_RIGHT_X + 122.0),
@@ -227,6 +229,6 @@ impl Panel {
             &self.b.gray,
         );
 
-        self.pedal_row_right("BRAKE", f.brake, &self.b.brake, py(CL_BRAKE_Y), w);
+        self.pedal_row_right(messages.brake, f.brake, &self.b.brake, py(CL_BRAKE_Y), w);
     }
 }

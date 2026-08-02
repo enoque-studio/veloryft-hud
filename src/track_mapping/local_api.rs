@@ -111,8 +111,8 @@ struct RecordingBody {
     enabled: bool,
 }
 
-/// Corpo de `POST /path/delta`: o que o viewer já tem. `have` são pares
-/// `[id_segmento, nº_pontos]` (array, não objeto, p/ manter ids numéricos).
+/// Body of `POST /path/delta`: what the viewer already has. `have` contains
+/// `[segment_id, point_count]` pairs, using arrays to preserve numeric IDs.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PathDeltaReq {
@@ -182,7 +182,7 @@ pub fn spawn(rec: Arc<Mutex<WorldMapRecorder>>, persist_path: PathBuf) -> thread
                 let path = req.url().split('?').next().unwrap_or(req.url());
                 let response = match (req.method(), path) {
                     (&Method::Get, "/map") => {
-                        // Grade de células acumulada (cobertura). A fita usa /path.
+                        // Accumulated cell grid (coverage). The ribbon uses /path.
                         let hm = rec.lock().unwrap().to_heightmap();
                         match serde_json::to_string(&hm) {
                             Ok(json) => json_response(200, &json),
@@ -190,8 +190,7 @@ pub fn spawn(rec: Arc<Mutex<WorldMapRecorder>>, persist_path: PathBuf) -> thread
                         }
                     }
                     (&Method::Get, "/path") => {
-                        // Traçado ordenado no tempo — a fita de largura fixa cresce
-                        // ao vivo conforme se dirige.
+                        // Time-ordered route; the fixed-width ribbon grows live as the player drives.
                         let p = rec.lock().unwrap().to_path();
                         match serde_json::to_string(&p) {
                             Ok(json) => json_response(200, &json),
@@ -199,8 +198,8 @@ pub fn spawn(rec: Arc<Mutex<WorldMapRecorder>>, persist_path: PathBuf) -> thread
                         }
                     }
                     (&Method::Post, "/path/delta") => {
-                        // Incremental: o viewer manda o que já tem; devolvemos só
-                        // os pontos novos/mudados (ver WorldMapRecorder::to_path_delta).
+                        // Incremental: the viewer sends its state and receives only new or
+                        // changed points; see `WorldMapRecorder::to_path_delta`.
                         match read_limited_body(&mut req) {
                             Ok(raw) => match serde_json::from_slice::<PathDeltaReq>(&raw) {
                                 Ok(r) if r.have.len() <= MAX_DELTA_SEGMENTS => {

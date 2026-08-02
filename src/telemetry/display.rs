@@ -1,4 +1,4 @@
-//! Suavização e visibilidade do HUD — fonte única consumida pelo overlay Direct2D.
+//! HUD smoothing and visibility: the single source consumed by the Direct2D overlay.
 
 use std::time::Instant;
 
@@ -11,7 +11,7 @@ use super::visibility;
 pub const TAU_BAR: f32 = 0.032;
 pub const TAU_TEXT: f32 = 0.11;
 pub const TAU_FADE_IN: f32 = 0.07;
-/// Fade-out mais rápido — menu/cinemática some 100% sem demora.
+/// Faster fade-out so menus and cinematics disappear fully without delay.
 pub const TAU_FADE_OUT: f32 = 0.035;
 
 const ANIM_RPM: f32 = 0.0005;
@@ -24,11 +24,11 @@ const ANIM_ALPHA: f32 = 0.005;
 pub struct DisplayFrame {
     pub rpm_frac: f32,
     pub near: bool,
-    /// Ponto de troca recomendado (fração de max_rpm) — aprendido por carro.
+    /// Recommended shift point as a fraction of max RPM, learned per vehicle.
     pub shift_frac: f32,
-    /// Corte do limitador (fração de max_rpm; 1.0 enquanto desconhecido).
+    /// Limiter as a fraction of max RPM; 1.0 while unknown.
     pub limit_frac: f32,
-    /// O corte deste carro já foi observado (platô a todo gás).
+    /// Whether this vehicle's limiter has been observed as a full-throttle plateau.
     pub limit_known: bool,
     pub gear: Option<u8>,
     pub speed: f32,
@@ -45,9 +45,9 @@ pub struct DisplayFrame {
     pub long: f32,
     pub fresh: bool,
     pub alpha: f32,
-    /// Ainda interpolando — o render deve continuar desenhando.
+    /// Still interpolating, so rendering must continue.
     pub animating: bool,
-    /// Elevação atual (m), suavizada.
+    /// Smoothed current elevation in metres.
     pub elev_m: f32,
     pub elev_min: f32,
     pub elev_max: f32,
@@ -127,7 +127,7 @@ impl DisplaySmoother {
         }
     }
 
-    /// Grava o aprendizado de limite de giro pendente (chamar ao sair).
+    /// Persist pending rev-limit learning; call during shutdown.
     pub fn persist(&mut self) {
         self.revlimit.save_now();
     }
@@ -174,7 +174,7 @@ impl DisplaySmoother {
         }
     }
 
-    /// Avança um passo de suavização. `force_visible` mantém o HUD visível (modo edição).
+    /// Advance smoothing by one step. `force_visible` keeps the HUD visible in edit mode.
     pub fn tick(&mut self, snap: &Telemetry, force_visible: bool) -> &DisplayFrame {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().min(0.1);
@@ -339,7 +339,7 @@ impl Default for DisplaySmoother {
     }
 }
 
-/// Chave de paint por painel — evita `UpdateLayeredWindow` quando nada mudou.
+/// Per-panel paint key that avoids `UpdateLayeredWindow` when nothing changed.
 pub fn panel_paint_key(
     kind: PanelKind,
     f: &DisplayFrame,
@@ -426,7 +426,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn suaviza_rpm_em_direcao_ao_alvo() {
+    fn smooths_rpm_toward_the_target() {
         let mut s = DisplaySmoother::new();
         let mut t = Telemetry {
             sled_only: 0,
@@ -447,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn paint_key_nao_panica_com_nome_longo() {
+    fn paint_key_handles_a_long_vehicle_name() {
         let f = DisplayFrame {
             car_name: "A".repeat(64),
             show_power: true,
@@ -460,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn acelerador_isolado_nao_invalida_bitmap_do_cluster() {
+    fn isolated_throttle_does_not_invalidate_the_cluster_bitmap() {
         let mut f = DisplayFrame {
             alpha: 1.0,
             accel: 0.0,
@@ -473,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn esconde_no_menu() {
+    fn hides_in_a_menu() {
         let mut s = DisplaySmoother::new();
         let t = Telemetry {
             sled_only: 0,
