@@ -87,7 +87,7 @@ missing files, unavailable resources — all handled.
 message should state the invariant:
 
 ```rust
-.expect("the embedded catalog is valid JSON")
+.expect("the static panel definition has a matching renderer")
 ```
 
 Failures that reach a user get an actionable message. "The Veloryft overlay

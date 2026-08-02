@@ -67,8 +67,8 @@ SetupIconFile=assets\veloryft.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 
-; License terms (mandatory acceptance) + post-install quick-start guide.
-LicenseFile=eula.txt
+; Post-install quick-start guide. Apache-2.0 is shipped as a notice rather than
+; a separate click-through contract.
 InfoAfterFile=readme.txt
 
 ; Packaging.
@@ -87,12 +87,15 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#MyBuildExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
 Source: "readme.txt"; DestDir: "{app}"; DestName: "Read Me.txt"; Flags: ignoreversion isreadme
-Source: "eula.txt"; DestDir: "{app}"; DestName: "License Agreement.txt"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\NOTICE"; DestDir: "{app}"; DestName: "NOTICE.txt"; Flags: ignoreversion
+Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; DestName: "THIRD_PARTY_NOTICES.md"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Read Me"; Filename: "{app}\Read Me.txt"
-Name: "{group}\License Agreement"; Filename: "{app}\License Agreement.txt"
+Name: "{group}\License"; Filename: "{app}\LICENSE.txt"
+Name: "{group}\Third-party notices"; Filename: "{app}\THIRD_PARTY_NOTICES.md"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 

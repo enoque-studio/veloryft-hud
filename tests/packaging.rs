@@ -85,7 +85,12 @@ fn every_asset_the_installer_references_exists() {
 
 #[test]
 fn the_installer_ships_the_documents_it_declares() {
-    for document in ["installer/eula.txt", "installer/readme.txt"] {
+    for document in [
+        "installer/readme.txt",
+        "LICENSE",
+        "NOTICE",
+        "THIRD_PARTY_NOTICES.md",
+    ] {
         assert!(exists(document), "{document} is missing");
         assert!(
             !read(document).trim().is_empty(),
@@ -207,17 +212,15 @@ fn this_packages_version_produces_a_valid_windows_resource_version() {
 }
 
 #[test]
-fn the_embedded_vehicle_catalog_is_present_and_parses() {
-    // The binary embeds this at compile time; a portable build has no other
-    // copy, so a malformed file means no car names anywhere.
-    let catalog = read("data/car_ordinals.json");
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&catalog).expect("data/car_ordinals.json must be valid JSON");
-    let entries = parsed
-        .as_object()
-        .expect("the catalog is a JSON object of name -> ordinal");
-    assert!(entries.len() > 100, "the catalog looks truncated");
+fn no_unlicensed_vehicle_catalog_is_bundled() {
+    assert!(
+        !exists("data/car_ordinals.json"),
+        "third-party vehicle data must not be redistributed"
+    );
+    assert!(
+        !read("src/telemetry/vehicle_catalog.rs").contains("include_str!"),
+        "the executable must not embed a vehicle catalog"
+    );
 }
 
 #[test]

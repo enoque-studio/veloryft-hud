@@ -57,42 +57,29 @@ consistency with this project's own license.
 `unicode-ident` additionally carries the Unicode-3.0 license for its embedded
 Unicode character tables, which permits redistribution with attribution.
 
-## Data
+## External data not redistributed
 
-### data/car_ordinals.json
+### Forza Horizon 6 car ordinals
 
-**Status: provenance unresolved — this is a release blocker.**
+Veloryft supports an optional user-provided ordinal-to-name catalog, but does
+not include one in this repository, executable, installer, or portable package.
 
-The file maps 638 Forza `car_ordinal` values to human-readable car names. It was
-added in the repository's initial commit with no recorded source, author, or
-license, and no upstream can be identified from the repository history.
+The catalog previously stored at `data/car_ordinals.json` was traced to:
 
-What is known:
+- **Author:** Martin Refseth ([HDR](https://github.com/HDR))
+- **Source:** [Forza Horizon 6 Car Ordinals](https://gist.github.com/HDR/0659d1717bc61504bf83750628963f4f)
+- **Author's description:** identifiers extracted from the game's vehicle files
+- **License:** none declared by the source
 
-- The mapping is *derived from* the game: an ordinal is an identifier the game
-  transmits over its own telemetry output, and the names describe real vehicles
-  by year, manufacturer, and model.
-- Ordinal-to-name tables of this kind circulate in the Forza telemetry community
-  in several near-identical forms, so this file may be a copy, a derivative, or
-  original work.
-- The names themselves are factual descriptions of real vehicles. Manufacturer
-  and model names are trademarks of their respective owners, used here only to
-  identify the vehicle a telemetry packet refers to.
+The local copy contained 638 entries and differed from the later 651-entry gist
+revision, but the overlap and repository history establish the source. Because
+the gist grants no explicit reuse license, the data was removed rather than
+relicensed by assumption. This notice records attribution and the reason it is
+not shipped; it does not claim that the external data is Apache-2.0 content.
 
-Before the first public release, the owner must establish one of the following
-and record it here:
-
-1. The file is original work of this project — state that, and it is covered by
-   this repository's Apache-2.0 license.
-2. The file came from an identifiable source — record the project, the author,
-   the license, and any transformation applied, and add the required attribution.
-3. Provenance cannot be established — regenerate the mapping from first-hand
-   observation, or ship without it. The application already degrades gracefully:
-   `telemetry::vehicle_catalog` falls back to showing the raw ordinal when no
-   name is known.
-
-Until this is resolved, treat the file as **requires_review**. It is documented
-here rather than removed silently, and no claim is made about its license.
+Users who independently obtain or create a compatible file can load it locally.
+Without one, Veloryft shows the raw ordinal and all telemetry features continue
+to work.
 
 ## Brand assets
 
@@ -104,8 +91,8 @@ The artwork in `assets/brand/` and the installer artwork generated from it
 
 "Forza", "Forza Horizon", "Forza Motorsport", "Xbox", and "Microsoft" are
 trademarks of Microsoft Corporation. "Turn 10 Studios" and "Playground Games"
-are names of their respective owners. Vehicle manufacturer and model names in
-`data/car_ordinals.json` are trademarks of their respective owners.
+are names of their respective owners. Vehicle manufacturer and model names
+supplied through an external catalog are trademarks of their respective owners.
 
 Veloryft is not affiliated with, sponsored by, or endorsed by any of them. Every
 reference is descriptive: it identifies what the software is compatible with.

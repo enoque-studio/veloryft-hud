@@ -1,10 +1,10 @@
-//! Car names by `car_ordinal`, loaded from `data/car_ordinals.json`
-//! (legacy shape: `"Car Name": "247"`).
+//! Optional car names by `car_ordinal`, loaded from a user-supplied JSON file
+//! with the legacy shape `"Car Name": "247"`.
 //!
-//! The JSON is embedded into the binary at compile time, so installed and
-//! portable builds always have a catalog. A file on disk (environment variable,
-//! working directory, or next to the executable) only *overrides* the embedded
-//! copy, which is how names can be updated without recompiling.
+//! Veloryft deliberately does not redistribute a catalog. The known community
+//! source has no declared reuse license, so users may provide their own file by
+//! environment variable or in one of the documented local paths. Without one,
+//! the HUD displays the ordinal and every other feature keeps working.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,9 +14,7 @@ use crate::diagnostics::{log_info, log_warn};
 
 static CATALOG: OnceLock<HashMap<i32, String>> = OnceLock::new();
 
-static EMBEDDED_CATALOG: &str = include_str!("../../data/car_ordinals.json");
-
-/// Environment variable pointing at a replacement catalog file. Part of the
+/// Environment variable pointing at a catalog file. Part of the
 /// public contract — see `docs/reference/environment_variables.md`.
 pub const CATALOG_PATH_VAR: &str = "FORZA_CAR_ORDINALS";
 
@@ -65,20 +63,8 @@ fn load() -> HashMap<i32, String> {
         }
     }
 
-    match parse(EMBEDDED_CATALOG) {
-        Ok(catalog) if !catalog.is_empty() => {
-            log_info!(
-                "vehicle catalog: {} cars from the embedded copy",
-                catalog.len()
-            );
-            catalog
-        }
-        _ => {
-            // Only reachable if the embedded JSON was corrupted at build time.
-            log_warn!("vehicle catalog: embedded copy is invalid; car names unavailable");
-            HashMap::new()
-        }
-    }
+    log_info!("vehicle catalog: no external catalog found; showing car ordinals");
+    HashMap::new()
 }
 
 fn load_file(path: &Path) -> std::io::Result<HashMap<i32, String>> {
@@ -98,7 +84,7 @@ fn parse(text: &str) -> std::io::Result<HashMap<i32, String>> {
     Ok(catalog)
 }
 
-/// Override locations, in priority order. The embedded copy is the fallback.
+/// Catalog locations, in priority order.
 fn candidate_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Ok(configured) = std::env::var(CATALOG_PATH_VAR) {
@@ -132,10 +118,10 @@ mod tests {
     }
 
     #[test]
-    fn the_embedded_catalog_parses_and_is_populated() {
-        let catalog = parse(EMBEDDED_CATALOG).expect("the embedded catalog is valid JSON");
+    fn a_user_supplied_catalog_parses() {
+        let catalog =
+            parse(r#"{"1969 Toyota 2000 GT":"247"}"#).expect("a valid user catalog must parse");
 
-        assert!(!catalog.is_empty());
         assert_eq!(
             catalog.get(&247).map(String::as_str),
             Some("1969 Toyota 2000 GT")
@@ -157,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn the_override_variable_takes_priority_over_bundled_paths() {
+    fn the_environment_variable_takes_priority_over_documented_paths() {
         // Only asserts ordering, so it does not depend on the ambient environment.
         let paths = candidate_paths();
         if let Ok(configured) = std::env::var(CATALOG_PATH_VAR) {

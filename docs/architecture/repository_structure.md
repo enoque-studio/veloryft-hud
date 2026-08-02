@@ -26,9 +26,8 @@ veloryft-hud/
 │
 ├── tests/                  integration, packaging, feature-specific
 ├── examples/               synthetic telemetry sender
-├── data/                   car_ordinals.json, embedded at build time
 ├── assets/brand/           logo and wordmark sources
-├── installer/              Inno Setup definition, EULA, generated artwork
+├── installer/              Inno Setup definition, quick start, generated artwork
 ├── scripts/                build, packaging, checksums
 ├── docs/
 └── .github/                CI, release, issue and pull-request templates

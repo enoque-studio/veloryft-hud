@@ -1,8 +1,6 @@
 # Source licensing decision
 
-**Decision: Apache-2.0, with trademarks reserved separately.**
-**Applied. The installer EULA has been revised to match, and still needs legal
-review.**
+**Decision: Apache-2.0, with trademarks reserved separately. Applied.**
 
 This document records the analysis behind the choice, so that it can be
 re-examined rather than re-argued.
@@ -89,25 +87,16 @@ and is hard to justify at this size.
 allowed set. A copyleft dependency would undermine the choice, which is why the
 list is checked on every pull request.
 
-## The EULA
+## No separate binary EULA
 
-The installer EULA covered the prebuilt binary and contained clauses that
-directly contradicted Apache-2.0: no redistribution, no sale, no reverse
-engineering, personal non-commercial use only.
+The old installer required acceptance of a project-specific EULA. Even after
+its contradictory restrictions were removed, it remained an unreviewed second
+contract with no clear benefit for an Apache-2.0 application.
 
-It has been revised so that:
-
-- Apache-2.0 governs the source code and **prevails on any conflict**.
-- The EULA governs the official prebuilt binary only.
-- Its remaining substance is warranty disclaimers, beta status, privacy
-  behaviour, trademark notices, and third-party trademark disclaimers — none of
-  which Apache-2.0 addresses and all of which are compatible with it.
-- The restriction that remains is the trademark one, which Apache-2.0
-  explicitly does not grant anyway.
-
-**It has not been reviewed by a lawyer.** It is marked as a draft, and must not
-be described as final until that review happens. The revision removed a known
-contradiction; it did not turn an untested document into a tested one.
+It has been retired. Source and official binaries are distributed under
+Apache-2.0, with `NOTICE`, third-party notices, the warranty disclaimer already
+present in the license, and a separate trademark policy. The installer displays
+no click-through license page and installs those notices beside the executable.
 
 ## Files in place
 
@@ -115,19 +104,21 @@ contradiction; it did not turn an untested document into a tested one.
 | ---- | ------- |
 | [LICENSE](../../LICENSE) | Apache-2.0, full text |
 | [NOTICE](../../NOTICE) | Attribution, as Apache-2.0 section 4 requires |
-| [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) | Dependencies, their licenses, and the unresolved data provenance |
+| [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) | Dependencies, external data attribution, and their license status |
 | [TRADEMARKS.md](../../TRADEMARKS.md) | What the name and logo do and do not permit |
-| `installer/eula.txt` | Binary distribution terms, revised, draft |
+| `installer/veloryft.iss` | Ships the same license and notices with the binary |
 
-## Still open
+## Closed provenance review
 
-**`data/car_ordinals.json` has no established provenance.** It arrived in the
-initial commit with no source, author, or license. This is a release blocker,
-independent of the source license, and is documented in
-[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
+The vehicle catalog was traced to Martin Refseth's public FH6 ordinal gist. The
+author states that the data was extracted from game files, but the gist declares
+no reuse license. Attribution alone cannot supply that missing permission.
 
-**Legal review of the EULA.** Required before it can be called final.
+Veloryft therefore no longer embeds or redistributes that catalog. Users can
+provide their own local mapping through the documented extension point. This
+closes the repository's data-provenance blocker without making a claim about
+the external dataset's license.
 
-**Trademark registration.** The policy asserts common-law rights in the name and
-logo. Registration would strengthen it, and is a separate decision with its own
-cost.
+Trademark registration remains optional. The policy asserts common-law rights
+in the name and logo; registration would strengthen them and is a separate
+business decision.

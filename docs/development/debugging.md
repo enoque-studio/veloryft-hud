@@ -10,7 +10,7 @@ One record per line: a Unix timestamp, a level, and a message.
 
 ```
 1754131200 INFO veloryft 0.2.0-beta.1 starting
-1754131200 INFO vehicle catalog: 638 cars from the embedded copy
+1754131200 INFO vehicle catalog: no external catalog found; showing car ordinals
 1754131200 INFO listening for Forza telemetry on 0.0.0.0:20066
 ```
 

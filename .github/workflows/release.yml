@@ -135,18 +135,22 @@ jobs:
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
           body: |
-            ## Downloads
+            Veloryft is a native, click-through Forza telemetry HUD for 64-bit
+            Windows 10 and later. It processes telemetry locally and requires
+            no account, activation key, or separate runtime.
 
-            | File | What it is |
-            | ---- | ---------- |
-            | `Veloryft-Setup-${{ steps.version.outputs.semver }}.exe` | Installer. Adds a Start menu entry and an uninstaller. |
-            | `Veloryft-Portable-${{ steps.version.outputs.semver }}.zip` | Portable. Unzip and run; nothing is installed. |
-            | `SHA256SUMS` | Checksums for both files. |
+            ## Choose your download
 
-            ## These downloads are not code-signed
+            | File | Use it when |
+            | --- | --- |
+            | `Veloryft-Setup-${{ steps.version.outputs.semver }}.exe` | You want a Start menu entry and normal Windows uninstaller. |
+            | `Veloryft-Portable-${{ steps.version.outputs.semver }}.zip` | You want to unzip and run without installation. |
+            | `SHA256SUMS` | You want to verify either download before running it. |
 
-            Windows SmartScreen will warn you. Verify the checksum before
-            running:
+            ## Verify before running
+
+            These beta downloads are not code-signed yet, so Windows SmartScreen
+            may warn you. Verify the SHA-256 checksum first:
 
             ```powershell
             (Get-FileHash .\Veloryft-Setup-${{ steps.version.outputs.semver }}.exe).Hash.ToLower()
@@ -154,17 +158,18 @@ jobs:
 
             Compare the result with the matching line in `SHA256SUMS`.
 
-            ## Requirements
-
-            64-bit Windows 10 or later. No Visual C++ Redistributable needed.
-
-            ## Setting up the game
+            ## Quick start
 
             In Forza: Settings → HUD and Gameplay → Data Out. Set it on, IP
             `127.0.0.1`, port `20066`.
 
-            See the [changelog](https://github.com/ESousa97/veloryft-hud/blob/main/CHANGELOG.md)
-            for what changed.
+            Forza sends a numeric car ordinal rather than a display name.
+            Veloryft does not bundle an unlicensed community catalog; it shows
+            the ordinal unless you provide a local mapping.
+
+            Read the [quick start](https://github.com/ESousa97/veloryft-hud#quick-start),
+            [changelog](https://github.com/ESousa97/veloryft-hud/blob/main/CHANGELOG.md),
+            and [installation guide](https://github.com/ESousa97/veloryft-hud/blob/main/docs/getting_started/installation.md).
           files: |
             dist/Veloryft-Setup-*.exe
             dist/Veloryft-Portable-*.zip

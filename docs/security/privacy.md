@@ -95,11 +95,11 @@ your setup. To remove everything:
 Remove-Item -Recurse "$env:APPDATA\forza-hud-native"
 ```
 
-## The EULA
+## Distribution terms
 
-`installer/eula.txt` makes the same statements in legal language. If it and this
-page ever disagree, that is a bug — report it, and read this page as the
-description of what the code does.
+The source and official binaries are distributed under Apache-2.0. The
+installer ships `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` beside the
+executable; there is no separate click-through EULA.
 
 ## GDPR, LGPD, and similar
 

@@ -11,8 +11,9 @@ version in `Cargo.toml` is the single source of truth — see
 
 ## [0.2.0-beta.1] — unreleased
 
-The first release prepared from the public repository. No change to what the
-overlay draws or how it behaves; everything here is about the project around it.
+The first release prepared entirely from the public repository. It preserves
+the native overlay and its performance-sensitive rendering model while making
+the project reproducible, reviewable, and ready for outside contributors.
 
 ### Added
 
@@ -31,6 +32,9 @@ overlay draws or how it behaves; everything here is about the project around it.
 - SHA-256 checksums published with every release artifact.
 - Apache-2.0 license, third-party notices, trademark policy, contribution guide,
   security policy, and a documentation tree in English.
+- A typed English localization catalog that keeps user-facing text out of
+  rendering, windowing, telemetry, and diagnostics code while providing an
+  explicit fallback for future complete locales.
 
 ### Changed
 
@@ -50,9 +54,9 @@ overlay draws or how it behaves; everything here is about the project around it.
 - The version comes from `Cargo.toml`; the separate `VERSION` file is gone.
 - Packaging scripts moved to `scripts/` with snake_case names and a shared
   helper for prerequisite checks and version lookup.
-- The EULA no longer contradicts the source license. Its restrictions on
-  redistribution and commercial use were removed, because Apache-2.0 grants
-  those rights. **It has not been reviewed by a lawyer.**
+- Official binaries now use the same Apache-2.0 terms as the source. The
+  unreviewed custom EULA and its click-through installer page were retired;
+  packages include `LICENSE`, `NOTICE`, and third-party notices instead.
 
 ### Removed
 
@@ -68,6 +72,10 @@ overlay draws or how it behaves; everything here is about the project around it.
   local workaround instead.
 - Two tester-feedback PDFs and a screenshot of an unrelated product surface.
   They remain in git history; see the release notes.
+- The embedded vehicle-name catalog. Its source was traced to Martin Refseth's
+  public FH6 ordinal gist, which declares no reuse license. Veloryft keeps the
+  local catalog extension point and displays raw ordinals when none is supplied,
+  without redistributing the external data.
 
 ### Fixed
 

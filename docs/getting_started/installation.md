@@ -58,13 +58,15 @@ Run the `.exe` and follow the wizard. It installs per-user by default, so no
 administrator prompt appears. You can choose an all-users install in the
 privileges dialog if you prefer.
 
-The installer never asks for a key or an account. The open beta has no license
-check.
+The installer never asks for a key, account, or separate license acceptance.
+The open beta is distributed under Apache-2.0 and has no license check.
 
 ## Portable
 
-Unzip anywhere and run `Veloryft.exe`. The car catalog is embedded in the
-binary, so no files need to sit beside it.
+Unzip anywhere and run `Veloryft.exe`. No configuration files need to sit beside
+it. An optional user-supplied vehicle catalog can add car names; without one,
+the HUD displays the car ordinal. See
+[vehicle catalog](../reference/vehicle_catalog.md).
 
 Settings still go to `%APPDATA%\forza-hud-native`, the same place the installed
 version uses — a portable copy is not isolated from an installed one.

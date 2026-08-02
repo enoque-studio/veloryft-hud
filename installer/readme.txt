@@ -39,9 +39,12 @@ The shift-point indicator learns each car as you drive at full throttle. It
 may still be calibrating during your first laps in a new car.
 
 --------------------------------------------------------------------------
-4) BETA SOFTWARE
+4) LICENSE AND BETA STATUS
 --------------------------------------------------------------------------
-This beta is provided as-is and may contain bugs or incomplete features.
-Thank you for trying Veloryft.
+Veloryft is licensed under Apache-2.0 and provided as-is. See LICENSE.txt,
+NOTICE.txt, and THIRD_PARTY_NOTICES.md beside the executable. The Veloryft
+name and logo remain reserved trademarks.
+
+This beta may contain bugs or incomplete features. Thank you for trying it.
 
 Your settings are stored in:  %APPDATA%\forza-hud-native

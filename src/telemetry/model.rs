@@ -18,7 +18,7 @@ pub struct Telemetry {
     pub idle_rpm: f32,
     /// Unique make/model ID from the BASE block.
     pub car_ordinal: i32,
-    /// Human-readable name resolved through `data/car_ordinals.json`.
+    /// Human-readable name resolved through an optional external catalog.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub car_name: Option<String>,
     /// FH6 car group/class, which changes when the vehicle changes.

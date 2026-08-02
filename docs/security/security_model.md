@@ -35,7 +35,7 @@ That is the whole footprint of a default build.
 | -------- | --------------- | ----------------- |
 | UDP socket | Datagrams from anything that can reach the port | Length-checked, offset-read, never allocated from |
 | Settings files | Text the user or another local program can edit | Parsed leniently, values clamped |
-| Vehicle catalog | JSON from a file or the embedded copy | Malformed entries skipped; failure falls back |
+| Vehicle catalog | Optional user-supplied JSON file | Malformed entries skipped; failure falls back to ordinals |
 | Loopback HTTP API | Requests from local processes | Only with `track_mapping`; loopback-bound, origin-checked, body-capped |
 
 ### The UDP receiver

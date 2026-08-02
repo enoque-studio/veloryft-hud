@@ -4,11 +4,15 @@ Forza identifies a car by an integer called the **car ordinal**, which it sends
 in every telemetry packet. It does not send the car's name. Veloryft maps the
 ordinal to a readable name using a catalog.
 
-## Where the catalog comes from
+## No catalog is bundled
 
-The catalog is `data/car_ordinals.json`, embedded into the binary at compile
-time. Installed and portable builds therefore always have it, with no file
-beside the executable.
+Veloryft does not redistribute a vehicle catalog. The community dataset from
+which the original copy was derived has an identified author but no declared
+reuse license, so embedding it would make a permission claim the project cannot
+support.
+
+Without a catalog, an ordinal such as `247` is displayed as `#247`. Telemetry,
+shift-point learning, and every other HUD feature continue to work.
 
 The format is a JSON object mapping name to ordinal, as a string:
 
@@ -23,27 +27,26 @@ The name is the key, which is backwards from how it is used. That is the shape
 the file arrived in, and it is kept so that existing override files continue to
 work.
 
-## Overriding it
+## Supplying your own catalog
 
-Point `FORZA_CAR_ORDINALS` at a replacement file to add cars without
-recompiling:
+Point `FORZA_CAR_ORDINALS` at a compatible local file:
 
 ```powershell
 $env:FORZA_CAR_ORDINALS = "C:\Users\me\my-cars.json"
 ```
 
 Veloryft also looks for `data/car_ordinals.json` in the working directory and
-next to the executable, in that order. The first file that loads and is
-non-empty wins; the embedded copy is the fallback.
+next to the executable, in that order. The first valid, non-empty file wins.
 
-An override **replaces** the catalog rather than merging with it, so include
-every car you want named.
+The file is local configuration and is not uploaded. Include every car you want
+named; catalogs are not merged.
 
 ## When a car is unknown
 
-Nothing breaks. An unknown ordinal simply shows no name, and the rest of the HUD
-is unaffected. A malformed entry is skipped without discarding the rest of the
-file, and a catalog that fails to parse leaves the embedded copy in place.
+Nothing breaks. An unknown ordinal is shown with a `#` prefix, and the rest of
+the HUD is unaffected. A malformed entry is skipped without discarding the rest
+of the file. If the file cannot be parsed, names remain unavailable and the HUD
+uses ordinals.
 
 The number of loaded cars is written to the log at startup, which is the quickest
 way to confirm an override was picked up.
@@ -54,14 +57,17 @@ The learned shift points in `rev-limits.json` are stored per ordinal, not per
 name. Editing the catalog therefore never affects calibration, and an unnamed
 car still learns normally.
 
-## Licensing
+## Known community source
 
-**The provenance of `data/car_ordinals.json` is unresolved, and that is a
-release blocker.** It was added in the repository's initial commit with no
-recorded source, author, or license.
+The removed catalog was traced to Martin Refseth (`HDR`):
+[Forza Horizon 6 Car Ordinals](https://gist.github.com/HDR/0659d1717bc61504bf83750628963f4f).
+The author states that the identifiers were extracted from the game's vehicle
+files. The gist does not declare a reuse license, so Veloryft links to it for
+attribution but neither mirrors nor downloads it.
 
-See [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) for what is known,
-and what has to be established before the file can be published with confidence.
+If you choose to use external data, review its terms yourself. A future catalog
+may be bundled only when it is independently produced for Veloryft or published
+under an explicit compatible license.
 
 Vehicle manufacturer and model names are trademarks of their respective owners
 and are used here descriptively, to identify which car a telemetry packet refers

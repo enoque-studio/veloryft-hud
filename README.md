@@ -1,225 +1,212 @@
-# Veloryft
+<p align="center">
+  <img src="installer/assets/veloryft_256.png" width="128" alt="Veloryft logo">
+</p>
 
-A native telemetry HUD for Forza on Windows. Written in Rust, drawn with
-Direct2D, and you can click straight through it into the game.
+<h1 align="center">Veloryft HUD</h1>
 
-> **Open beta.** It works and people use it, but expect rough edges. There is no
-> license check, no account, and no key — download it and run it.
+<p align="center"><strong>A fast, native telemetry overlay for Forza on Windows.</strong></p>
+<p align="center">Direct2D rendering · Click-through panels · Adaptive shift points · Local-only data</p>
 
-## What it does
+<p align="center">
+  <a href="https://github.com/ESousa97/veloryft-hud/actions/workflows/ci.yml"><img src="https://github.com/ESousa97/veloryft-hud/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/ESousa97/veloryft-hud/releases"><img src="https://img.shields.io/github/v/release/ESousa97/veloryft-hud?include_prereleases&amp;label=release" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2563eb.svg" alt="Apache-2.0 license"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078d4?logo=windows" alt="Windows 10 or later">
+  <img src="https://img.shields.io/badge/Rust-1.85%2B-000000?logo=rust" alt="Rust 1.85 or later">
+</p>
 
-- **RPM, gear, speed and pedals** in a cluster you can put where you like.
-- **A shift point learned from your car**, not guessed from a percentage of the
-  redline. Veloryft watches what the car does at full throttle and works out
-  where holding the gear stops paying.
-- **Tire temperatures** per corner, with the range covered this session.
-- **G-force** — lateral and longitudinal load, with a decaying trail.
-- **The lap's elevation profile**, with a marker showing where you are on it.
-- **Real click-through.** The mouse reaches the game, not the overlay.
-- **It hides itself** in menus, on pause screens, in replays and during
-  cutscenes, and comes back when you start driving.
+<p align="center">
+  <a href="#download">Download</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="docs/README.md">Documentation</a>
+</p>
 
-## Privacy
+> [!IMPORTANT]
+> Veloryft is an open beta. The currently published `beta` downloads are legacy
+> 0.1 builds; the reproducible 0.2 release pipeline is prepared in this
+> repository and will publish immutable, versioned releases.
 
-**Nothing leaves your machine.** No account, no analytics, no update check, no
-outbound network code at all. Veloryft reads the telemetry the game broadcasts
-to `127.0.0.1` and writes settings to your own profile folder.
+## Why Veloryft
 
-You do not have to take that on trust: the source is public, the dependency
-graph contains no HTTP client and no TLS stack, and a firewall will show you
-nothing leaving. See [privacy](docs/security/privacy.md).
+Veloryft turns Forza's built-in UDP telemetry into a responsive HUD without
+injecting code, reading game memory, or sending data anywhere. Each panel is a
+small native layered window that stays transparent to mouse input, so the game
+remains fully interactive underneath it.
 
-## Requirements
-
-- 64-bit Windows 10 or later
-- A Forza title with "Data Out" telemetry
-- Nothing else — no Visual C++ Redistributable, no runtime
-
----
-
-## For users
-
-### 1. Download
-
-From [Releases](https://github.com/ESousa97/veloryft-hud/releases):
-
-| | |
+| Focus | What it means |
 | --- | --- |
-| `Veloryft-Setup-<version>.exe` | Installer, with a Start menu entry and an uninstaller |
-| `Veloryft-Portable-<version>.zip` | Unzip and run; nothing is installed |
+| **Immediate feedback** | The critical throttle surface updates on its own high-priority 125 Hz path. |
+| **Useful shift timing** | Shift points are learned from each car's observed power delivery and RPM drop. |
+| **Native presentation** | Direct2D, DirectWrite, per-pixel alpha, DPI awareness, and no embedded browser. |
+| **Private by design** | No account, analytics, crash upload, update check, HTTP client, or outbound socket. |
+| **Reproducible builds** | A public clone builds without private repositories, access tokens, or license secrets. |
 
-### 2. Verify it
+## Features
 
-Releases are **not code-signed**, so Windows SmartScreen will warn you. Check
-the file against the published `SHA256SUMS` before running it:
+- Configurable RPM, gear, speed, brake, throttle, and power cluster.
+- Per-corner tire temperatures with session minimum and maximum values.
+- Lateral and longitudinal G-force display with a decaying trail.
+- Lap elevation profile with a live position marker.
+- Per-car adaptive rev-limit and shift-point learning.
+- Drag, resize, snap, recolor, and restyle panels in edit mode.
+- Automatic visibility in menus, pause screens, replays, and cutscenes.
+- Installer and portable distributions with published SHA-256 checksums.
+- Optional track-mapping feature, disabled in standard release builds.
+
+## Download
+
+Choose a package from [GitHub Releases](https://github.com/ESousa97/veloryft-hud/releases):
+
+| Package | Best for |
+| --- | --- |
+| `Veloryft-Setup-<version>.exe` | Normal installation, Start menu shortcut, and uninstaller. |
+| `Veloryft-Portable-<version>.zip` | Running without installation or from a removable folder. |
+| `SHA256SUMS` | Verifying that downloads match the published artifacts. |
+
+> [!WARNING]
+> Beta binaries are not code-signed yet, so Windows SmartScreen may warn you.
+> Verify the download against `SHA256SUMS` before selecting **More info → Run
+> anyway**.
 
 ```powershell
-(Get-FileHash .\Veloryft-Setup-0.2.0-beta.1.exe).Hash.ToLower()
+(Get-FileHash .\Veloryft-Setup-0.2.0-beta.1.exe).Hash.ToLowerInvariant()
 ```
 
-If it matches, click **More info** → **Run anyway**. If it does not, do not run
-it. See [installation](docs/getting_started/installation.md).
+Requirements: 64-bit Windows 10 or later and a Forza title with Data Out
+telemetry. No Visual C++ Redistributable or separate runtime is required.
 
-### 3. Turn on telemetry in the game
+## Quick start
 
-**Settings → HUD and Gameplay → Data Out**
+### 1. Enable telemetry
+
+In Forza, open **Settings → HUD and Gameplay → Data Out** and set:
 
 | Setting | Value |
-| ------- | ----- |
+| --- | --- |
 | Data Out | On |
 | IP address | `127.0.0.1` |
 | Port | `20066` |
 
-Some titles call this "Telemetry Output". See
-[game configuration](docs/getting_started/game_configuration.md).
+Some titles label the option **Telemetry Output**. See the complete
+[game configuration guide](docs/getting_started/game_configuration.md).
 
-### 4. Drive
+### 2. Start driving
 
-The HUD appears within a second of moving. Nothing shows up in menus — that is
-deliberate.
+The HUD appears after active telemetry arrives. Staying hidden in menus is
+intentional.
 
 | Shortcut | Action |
-| -------- | ------ |
-| **Ctrl + Alt + E** | Edit mode: drag, resize, change colours |
-| **Ctrl + Alt + H** | Hide or show |
-| **Ctrl + Alt + Q** | Quit |
+| --- | --- |
+| **Ctrl + Alt + E** | Enter edit mode. |
+| **Ctrl + Alt + H** | Hide or show the HUD. |
+| **Ctrl + Alt + Q** | Quit Veloryft. |
 
-Veloryft also sits in the system tray, usually under the hidden-icons arrow.
+Veloryft also provides Show/Hide and Exit actions from its system-tray icon.
 
-### Uninstalling
+### 3. Optional vehicle names
 
-Settings → Apps → Veloryft → Uninstall, or delete the portable folder.
+Forza sends a numeric car ordinal, not a display name. Veloryft shows that
+ordinal by default because it does not redistribute an unlicensed community
+catalog. You can supply your own local mapping through `FORZA_CAR_ORDINALS`;
+see [vehicle catalog](docs/reference/vehicle_catalog.md).
 
-**Your settings are kept**, so reinstalling restores your layout and everything
-Veloryft learned about your cars. To remove them too:
+## Privacy
 
-```powershell
-Remove-Item -Recurse "$env:APPDATA\forza-hud-native"
-```
+**Nothing leaves your machine.** The standard build receives UDP telemetry and
+writes only settings, learned shift points, and bounded diagnostics under
+`%APPDATA%\forza-hud-native`.
 
-### Something is wrong
+The dependency graph contains no HTTP client or TLS stack. The optional
+`track_mapping` feature adds a loopback-only local server, but it is disabled in
+published builds. Details and verification guidance are in the
+[privacy documentation](docs/security/privacy.md).
 
-[Troubleshooting](docs/getting_started/troubleshooting.md) covers the common
-cases — the HUD not appearing (usually Data Out), panels off-screen after a
-resolution change, shortcuts taken by another program.
-
-Logs are at `%APPDATA%\forza-hud-native\logs\veloryft.log`.
-
----
-
-## For contributors
-
-### Build it
-
-Clone this repository and nothing else. There are no private dependencies and no
-tokens.
-
-```bash
-git clone https://github.com/ESousa97/veloryft-hud
-cd veloryft-hud
-cargo build --release
-```
+## Build from source
 
 You need 64-bit Windows, Rust with the MSVC toolchain, and the Visual Studio
 Build Tools C++ workload.
 
-### Work on it without owning Forza
+```powershell
+git clone https://github.com/ESousa97/veloryft-hud.git
+cd veloryft-hud
+cargo build --release --locked
+```
 
-```bash
+No Forza installation is needed for development. Run the application and the
+synthetic sender in separate terminals:
+
+```powershell
 cargo run
 ```
 
-```bash
+```powershell
 cargo run --example synthetic_telemetry
 ```
 
-The HUD appears within a second, showing a car working through the gears around
-a closed loop. `--format sled|dash|fh6` exercises each wire format; `--idle`
-checks that the HUD correctly hides itself.
+The sender exercises Sled, Dash, and FH6 packet layouts and can simulate idle
+telemetry for visibility testing.
 
-### Before you push
+## Architecture
 
-```bash
+```text
+Forza
+  └─ UDP telemetry
+       └─ zero-copy packet parser
+            └─ lock-free ArcSwap snapshot
+                 ├─ cluster and auxiliary panel renderers
+                 └─ isolated critical-throttle surface at 125 Hz
+                      └─ Direct2D → premultiplied DIB → UpdateLayeredWindow
+```
+
+The native overlay is split into application, telemetry, rendering, settings,
+localization, and optional track-mapping boundaries. Start with the
+[system overview](docs/architecture/system_overview.md),
+[rendering pipeline](docs/architecture/rendering_pipeline.md), and
+[repository structure](docs/architecture/repository_structure.md).
+
+## Quality gates
+
+Pull requests run formatting, documentation, the declared minimum Rust version,
+Linux protocol tests, Windows builds, Clippy, default/all-feature tests, release
+compilation, dependency licensing, and RustSec advisories.
+
+```powershell
 cargo fmt --all -- --check
-```
-
-```bash
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-```
-
-```bash
 cargo test --workspace --all-features
+cargo deny check
+cargo audit
 ```
 
-That is exactly what CI runs. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md) — particularly the rules for the render hot
-path, which is not ordinary code.
-
----
-
-## How it works
-
-```
-Forza  ──UDP──▶  parse  ──▶  lock-free snapshot  ──▶  Direct2D  ──▶  layered window
-```
-
-Each panel is its own small `WS_EX_LAYERED | WS_EX_TRANSPARENT` window. Direct2D
-renders into a premultiplied DIB, and `UpdateLayeredWindow` hands it to the
-compositor — per-pixel alpha on the GPU, and clicks that cross the process
-boundary into the game. A fullscreen transparent surface judders; this does not.
-See [ADR 0001](docs/decisions/adr_0001_native_direct2d_overlay.md).
-
-The throttle bar has its own surface and its own high-priority thread at 125 Hz,
-because it is the fastest-changing thing on screen and the one a driver reacts
-to. Under compositor pressure the auxiliary panels slow down; the cluster never
-does.
-
-```
-veloryft-hud/
-├── src/
-│   ├── application/     startup and the authorization boundary
-│   ├── telemetry/       UDP, decoding, the domain model, derived state
-│   ├── overlay/         Win32 and Direct2D presentation
-│   └── track_mapping/   optional, off by default
-├── crates/veloryft_protocol/   contract shared with the backend
-├── tests/  examples/  data/  assets/  installer/  scripts/  docs/
-```
-
-More: [system overview](docs/architecture/system_overview.md) ·
-[repository structure](docs/architecture/repository_structure.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) before changing the render hot path or
+adding `unsafe` code.
 
 ## Documentation
 
-Everything is in [`docs/`](docs/README.md) — user guides, architecture,
-development, distribution, security, and the decision records.
+| Area | Entry point |
+| --- | --- |
+| Use the HUD | [Getting started](docs/getting_started/first_run.md) |
+| Understand the system | [Architecture](docs/architecture/system_overview.md) |
+| Develop and test | [Development setup](docs/development/development_setup.md) |
+| Build releases | [Release process](docs/distribution/release_process.md) |
+| Review security and privacy | [Security model](docs/security/security_model.md) |
+| Find configuration contracts | [Reference](docs/README.md#reference) |
 
-## Contributing
+Issues and pull requests are welcome. Use [SUPPORT.md](SUPPORT.md) for help and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
-prerequisites, what CI checks, and the constraints on hot-path and `unsafe` code.
+## License and trademarks
 
-Need help? [SUPPORT.md](SUPPORT.md).
-
-## Security
-
-Report vulnerabilities **privately**, never in a public issue. See
-[SECURITY.md](SECURITY.md).
-
-## License
-
-[Apache-2.0](LICENSE). Third-party components are listed in
+The source and official binaries are licensed under [Apache-2.0](LICENSE).
+Attribution and dependency details are in [NOTICE](NOTICE) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The **Veloryft** name and logo are trademarks and are not covered by that
-license — fork freely, but rename your build. See
-[TRADEMARKS.md](TRADEMARKS.md).
+The **Veloryft** name and logo are not granted under Apache-2.0. Forks may use
+the code but must follow [TRADEMARKS.md](TRADEMARKS.md) when naming and branding
+distributed builds.
 
-## Not affiliated with anyone
-
-"Forza", "Forza Horizon", "Forza Motorsport", "Xbox" and "Microsoft" are
-trademarks of Microsoft Corporation. "Turn 10 Studios" and "Playground Games"
-are names of their respective owners.
-
-**Veloryft is not affiliated with, sponsored by, or endorsed by any of them.**
-It reads only the telemetry the game itself broadcasts when you enable it. It
-does not modify the game, read its memory, or inject code.
+Veloryft is not affiliated with, sponsored by, or endorsed by Microsoft, Xbox,
+Turn 10 Studios, Playground Games, or any vehicle manufacturer. Product and
+company names are used only to describe compatibility.

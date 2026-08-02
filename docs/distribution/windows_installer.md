@@ -31,7 +31,9 @@ winget install --id JRSoftware.InnoSetup
 | ---- | ------------ |
 | `target/release/veloryft.exe` | `Veloryft.exe` |
 | `installer/readme.txt` | `Read Me.txt` |
-| `installer/eula.txt` | `License Agreement.txt` |
+| `LICENSE` | `LICENSE.txt` |
+| `NOTICE` | `NOTICE.txt` |
+| `THIRD_PARTY_NOTICES.md` | `THIRD_PARTY_NOTICES.md` |
 
 Plus Start menu shortcuts, an uninstaller, and an optional desktop icon that is
 unchecked by default.
@@ -106,15 +108,11 @@ that reinstalling keeps the user's layout, theme and learned rev limits. Users
 who want a clean slate are told how in
 [installation](../getting_started/installation.md).
 
-## The EULA
+## License notices
 
-`installer/eula.txt`, which the wizard requires the user to accept.
-
-It covers the official prebuilt binary: warranty disclaimers, beta status,
-privacy behaviour, and trademark notices. It explicitly does **not** restrict
-what Apache-2.0 grants for the source code.
-
-**It has not been reviewed by a lawyer**, and is marked as a draft. See
+Official binaries use the same Apache-2.0 license as the source. The installer
+does not impose a separate click-through EULA; it installs the license, NOTICE,
+and third-party notices beside the application. See
 [the licensing decision](../legal/licensing_decision.md).
 
 ## No license gate

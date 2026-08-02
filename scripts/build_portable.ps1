@@ -3,10 +3,9 @@
   Builds the Veloryft portable package (no installer).
 
 .DESCRIPTION
-  Veloryft needs no files beside its executable — the car catalog is embedded in
-  the binary — so the same .exe runs from any folder. This script only stages
-  the executable together with the quick-start guide and the license terms, then
-  zips it.
+  Veloryft runs without files beside its executable. This script stages the
+  executable together with the quick-start guide, Apache-2.0 license, NOTICE,
+  and third-party notices, then zips them.
 
 .PARAMETER SkipBuild
   Package the already-built target\release\veloryft.exe instead of rebuilding.
@@ -15,7 +14,7 @@
   Extra Cargo features to enable, for example -Features track_mapping.
 
 .INPUTS
-  None. Reads Cargo.toml and installer/*.txt.
+  None. Reads Cargo.toml, installer/readme.txt, and repository legal notices.
 
 .OUTPUTS
   dist\Veloryft-Portable-<version>.zip
@@ -63,7 +62,9 @@ try {
   # between them keeps the same shortcut target and the same tray identity.
   Copy-Item $exe (Join-Path $stage 'Veloryft.exe')
   Copy-Item (Join-Path $repository 'installer\readme.txt') (Join-Path $stage 'Read Me.txt')
-  Copy-Item (Join-Path $repository 'installer\eula.txt') (Join-Path $stage 'License Agreement.txt')
+  Copy-Item (Join-Path $repository 'LICENSE') (Join-Path $stage 'LICENSE.txt')
+  Copy-Item (Join-Path $repository 'NOTICE') (Join-Path $stage 'NOTICE.txt')
+  Copy-Item (Join-Path $repository 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md')
 
   $zip = Join-Path $distribution "Veloryft-Portable-$($version.SemVer).zip"
   if (Test-Path $zip) { Remove-Item $zip -Force }

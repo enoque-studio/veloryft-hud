@@ -1,6 +1,7 @@
 # Portable package
 
-A zip containing the executable and two text files. Nothing is installed.
+A zip containing the executable, quick start, license, and notices. Nothing is
+installed.
 
 ## Building it
 
@@ -20,7 +21,9 @@ Output: `dist/Veloryft-Portable-<version>.zip`.
 ```
 Veloryft.exe
 Read Me.txt
-License Agreement.txt
+LICENSE.txt
+NOTICE.txt
+THIRD_PARTY_NOTICES.md
 ```
 
 That is all of it. The executable is renamed from `veloryft.exe` to match the
@@ -31,8 +34,8 @@ shortcut target and the same tray identity.
 
 Two build decisions make this possible:
 
-- **The car catalog is embedded** in the binary at compile time, so no `data/`
-  folder needs to travel with it.
+- **Configuration is optional.** Without a user-supplied vehicle catalog, the
+  HUD displays car ordinals and needs no `data/` folder.
 - **The C runtime is linked statically**, so there is no Visual C++
   Redistributable to install. See
   [ADR 0002](../decisions/adr_0002_static_crt.md).
