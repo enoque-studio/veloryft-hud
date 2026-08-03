@@ -24,9 +24,9 @@
 </p>
 
 > [!IMPORTANT]
-> Veloryft is an open beta. The currently published `beta` downloads are legacy
-> 0.1 builds; the reproducible 0.2 release pipeline is prepared in this
-> repository and will publish immutable, versioned releases.
+> Veloryft is an open beta. Releases are immutable and versioned; beta builds
+> are marked as prereleases so stable download links never resolve to an
+> experimental build.
 
 ## Why Veloryft
 
