@@ -9,7 +9,7 @@ version in `Cargo.toml` is the single source of truth — see
 
 ## [Unreleased]
 
-## [0.2.0-beta.1] — unreleased
+## [0.2.0-beta.1] — 2026-08-02
 
 The first release prepared entirely from the public repository. It preserves
 the native overlay and its performance-sensitive rendering model while making
