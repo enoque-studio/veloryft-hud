@@ -11,6 +11,7 @@
 
 # Binary assets: never normalized, never diffed as text.
 *.png   binary
+*.gif   binary
 *.ico   binary
 *.bmp   binary
 *.pdf   binary

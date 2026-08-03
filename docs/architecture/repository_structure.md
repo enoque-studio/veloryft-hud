@@ -30,6 +30,7 @@ veloryft-hud/
 ├── installer/              Inno Setup definition, quick start, generated artwork
 ├── scripts/                build, packaging, checksums
 ├── docs/
+│   └── assets/demos/      optimized product and setup walkthroughs
 └── .github/                CI, release, issue and pull-request templates
 ```
 
