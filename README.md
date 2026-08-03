@@ -55,6 +55,18 @@ remains fully interactive underneath it.
 - Installer and portable distributions with published SHA-256 checksums.
 - Optional track-mapping feature, disabled in standard release builds.
 
+### Edit mode
+
+Press **Ctrl + Alt + E** to move, resize, snap, recolor, and restyle each HUD
+panel directly on the desktop.
+
+<p align="center">
+  <img src="docs/assets/demos/hud_editing.gif" width="900" alt="Editing and styling Veloryft HUD panels">
+</p>
+
+_This recording uses an earlier Portuguese development build. Current builds
+use the English labels defined by the [localization catalog](src/localization/en_us.rs)._
+
 ## Download
 
 Choose a package from [GitHub Releases](https://github.com/ESousa97/veloryft-hud/releases):
@@ -88,6 +100,10 @@ In Forza, open **Settings → HUD and Gameplay → Data Out** and set:
 | Data Out | On |
 | IP address | `127.0.0.1` |
 | Port | `20066` |
+
+<p align="center">
+  <img src="docs/assets/demos/telemetry_setup.gif" width="900" alt="Enabling Forza Data Out telemetry and configuring the loopback address and UDP port">
+</p>
 
 Some titles label the option **Telemetry Output**. See the complete
 [game configuration guide](docs/getting_started/game_configuration.md).
