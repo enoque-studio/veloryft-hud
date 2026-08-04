@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="https://veloryft.com">Website</a> ·
   <a href="#download">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#features">Features</a> ·
