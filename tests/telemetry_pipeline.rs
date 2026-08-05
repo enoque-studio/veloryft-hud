@@ -109,9 +109,15 @@ fn the_packet_counter_advances_once_per_datagram() {
         "expected several packets to be counted, saw {}",
         shared.latest()._pkt
     );
+    // The receive thread stores the snapshot (making `_pkt` visible above)
+    // before invoking the callback, so the callback count can briefly lag
+    // behind `_pkt` even once every datagram has been accepted. Poll instead
+    // of sampling once, or this flakes whenever the two steps get scheduled
+    // apart under load.
     assert!(
-        callbacks.load(Ordering::Relaxed) >= 3,
-        "the per-packet callback should fire for every accepted datagram"
+        wait_until(|| callbacks.load(Ordering::Relaxed) >= 3),
+        "the per-packet callback should fire for every accepted datagram, saw {}",
+        callbacks.load(Ordering::Relaxed)
     );
 }
 
