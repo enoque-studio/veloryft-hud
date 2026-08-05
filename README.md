@@ -4,7 +4,7 @@
 
 <h1 align="center">Veloryft HUD</h1>
 
-<p align="center"><strong>A fast, native telemetry overlay for Forza on Windows.</strong></p>
+<p align="center"><strong>A fast, native telemetry overlay for Forza Horizon 6 on Windows.</strong></p>
 <p align="center">Direct2D rendering · Click-through panels · Adaptive shift points · Local-only data</p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 
 ## Why Veloryft
 
-Veloryft turns Forza's built-in UDP telemetry into a responsive HUD without
+Veloryft turns Forza Horizon 6's built-in UDP telemetry into a responsive HUD without
 injecting code, reading game memory, or sending data anywhere. Each panel is a
 small native layered window that stays transparent to mouse input, so the game
 remains fully interactive underneath it.
@@ -87,14 +87,14 @@ Choose a package from [GitHub Releases](https://github.com/ESousa97/veloryft-hud
 (Get-FileHash .\Veloryft-Setup-0.2.0-beta.1.exe).Hash.ToLowerInvariant()
 ```
 
-Requirements: 64-bit Windows 10 or later and a Forza title with Data Out
+Requirements: 64-bit Windows 10 or later and Forza Horizon 6 with Data Out
 telemetry. No Visual C++ Redistributable or separate runtime is required.
 
 ## Quick start
 
 ### 1. Enable telemetry
 
-In Forza, open **Settings → HUD and Gameplay → Data Out** and set:
+In Forza Horizon 6, open **Settings → HUD and Gameplay → Data Out** and set:
 
 | Setting | Value |
 | --- | --- |
@@ -103,7 +103,7 @@ In Forza, open **Settings → HUD and Gameplay → Data Out** and set:
 | Port | `20066` |
 
 <p align="center">
-  <img src="docs/assets/demos/telemetry_setup.gif" width="900" alt="Enabling Forza Data Out telemetry and configuring the loopback address and UDP port">
+  <img src="docs/assets/demos/telemetry_setup.gif" width="900" alt="Enabling Forza Horizon 6 Data Out telemetry and configuring the loopback address and UDP port">
 </p>
 
 Some titles label the option **Telemetry Output**. See the complete
@@ -124,7 +124,7 @@ Veloryft also provides Show/Hide and Exit actions from its system-tray icon.
 
 ### 3. Optional vehicle names
 
-Forza sends a numeric car ordinal, not a display name. Veloryft shows that
+Forza Horizon 6 sends a numeric car ordinal, not a display name. Veloryft shows that
 ordinal by default because it does not redistribute an unlicensed community
 catalog. You can supply your own local mapping through `FORZA_CAR_ORDINALS`;
 see [vehicle catalog](docs/reference/vehicle_catalog.md).
@@ -151,7 +151,7 @@ cd veloryft-hud
 cargo build --release --locked
 ```
 
-No Forza installation is needed for development. Run the application and the
+No Forza Horizon 6 installation is needed for development. Run the application and the
 synthetic sender in separate terminals:
 
 ```powershell
@@ -168,7 +168,7 @@ telemetry for visibility testing.
 ## Architecture
 
 ```text
-Forza
+Forza Horizon 6
   └─ UDP telemetry
        └─ zero-copy packet parser
             └─ lock-free ArcSwap snapshot

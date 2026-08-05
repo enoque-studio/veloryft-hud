@@ -14,7 +14,7 @@ Use English for:
 - repository documentation and contribution material;
 - the fallback text shown when a translation is unavailable.
 
-Brand names, protocol field names, persisted configuration keys, and Forza's
+Brand names, protocol field names, persisted configuration keys, and Forza Horizon 6's
 official menu labels remain unchanged where compatibility or accurate setup
 instructions require them.
 
@@ -57,7 +57,7 @@ Do not translate or rename:
 - environment variables such as `FORZA_UDP_PORT`;
 - keys already persisted in `layout.txt` and `theme.txt`;
 - HTTP routes and public JSON field names;
-- packet-format terminology used by Forza;
+- packet-format terminology used by Forza Horizon 6;
 - filenames or paths that form a compatibility contract.
 
 Changing those values is a migration, not a translation.

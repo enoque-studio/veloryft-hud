@@ -4,7 +4,7 @@ Veloryft does not read the game's memory and does not attach to its process. It
 listens for the telemetry the game broadcasts through its own "Data Out"
 feature, which you have to switch on.
 
-## Forza Horizon
+## Forza Horizon 6
 
 1. Open **Settings**.
 2. Go to **HUD and Gameplay**.
@@ -32,7 +32,7 @@ sends it to a socket Veloryft opens locally, and Veloryft sends it nowhere. See
 [privacy](../security/privacy.md).
 
 If you have previously pointed Data Out at another program or another PC, note
-that Forza sends to **one** address. Changing it here stops the other program
+that Forza Horizon 6 sends to **one** address. Changing it here stops the other program
 from receiving anything.
 
 ## Why 20066
@@ -53,7 +53,7 @@ make that permanent.
 
 ## Packet formats
 
-Forza sends one of three layouts, depending on the title and the setting.
+Forza Horizon 6 sends one of three layouts, depending on the setting.
 Veloryft detects which one arrived and adapts:
 
 | Format | Size | What it carries |

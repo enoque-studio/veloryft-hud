@@ -30,7 +30,7 @@ Most reports turn out to be one of a handful of things. The
 
 - The version, from the installer file name or the executable's Properties.
 - Your Windows version and whether you run more than one monitor.
-- Which Forza title, and the Data Out settings you used.
+- Which Forza Horizon 6 build, and the Data Out settings you used.
 - What you expected and what happened.
 - The relevant part of `%APPDATA%\forza-hud-native\logs\veloryft.log`.
 
@@ -39,7 +39,7 @@ anyway — a file path can contain your name.
 
 ## What is not supported
 
-- Games other than the Forza titles listed in the README. Other titles that
+- Games other than Forza Horizon 6. Other titles that
   speak the same UDP format may work; nothing is promised.
 - Windows versions before Windows 10 64-bit.
 - Builds you compiled yourself with modifications. Reproduce on an official

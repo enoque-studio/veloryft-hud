@@ -18,7 +18,7 @@ English is the source language for the application, code, and documentation.
 | [Keyboard shortcuts](reference/keyboard_shortcuts.md) | Every shortcut and every tray action |
 | [Environment variables](reference/environment_variables.md) | Every variable Veloryft reads |
 | [Configuration files](reference/configuration_files.md) | What is saved, where, and in what format |
-| [Telemetry formats](reference/telemetry_formats.md) | The three Forza packet layouts and how they are told apart |
+| [Telemetry formats](reference/telemetry_formats.md) | The three Forza Horizon 6 packet layouts and how they are told apart |
 | [Vehicle catalog](reference/vehicle_catalog.md) | Car names, and how to override them |
 
 ## I want to understand how it works

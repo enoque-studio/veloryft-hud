@@ -1,6 +1,6 @@
 # Vehicle catalog
 
-Forza identifies a car by an integer called the **car ordinal**, which it sends
+Forza Horizon 6 identifies a car by an integer called the **car ordinal**, which it sends
 in every telemetry packet. It does not send the car's name. Veloryft maps the
 ordinal to a readable name using a catalog.
 

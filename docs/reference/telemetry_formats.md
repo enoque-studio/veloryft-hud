@@ -1,6 +1,6 @@
 # Telemetry formats
 
-Forza titles broadcast a fixed-layout binary datagram over UDP when "Data Out"
+Forza Horizon 6 broadcasts a fixed-layout binary datagram over UDP when "Data Out"
 is enabled. There is no header, no version field, and no framing: the **length**
 of the datagram is the only thing that identifies the layout.
 
@@ -98,7 +98,7 @@ HUD behaves on each. See [testing strategy](../development/testing_strategy.md).
 
 ## Provenance
 
-The offsets were derived from the community-documented Forza "Data Out" layout
+The offsets were derived from the community-documented Forza Horizon 6 "Data Out" layout
 and verified against live captures during development. They are not published by
 Microsoft and are not guaranteed stable across titles.
 

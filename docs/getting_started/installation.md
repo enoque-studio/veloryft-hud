@@ -6,7 +6,7 @@ build tools to use it.
 ## Requirements
 
 - 64-bit Windows 10 or later
-- A copy of a supported Forza title
+- A copy of Forza Horizon 6
 - Nothing else. The binary is built with a static C runtime, so there is no
   Visual C++ Redistributable to install.
 

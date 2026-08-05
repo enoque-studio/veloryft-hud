@@ -4,7 +4,7 @@ Veloryft is one Windows executable. There is no service, no browser, no local
 web server in the default build, and no background updater.
 
 ```
-Forza  ──UDP 20066──▶  telemetry::receiver     dedicated thread
+Forza Horizon 6  ──UDP 20066──▶  telemetry::receiver     dedicated thread
                               │
                               ▼
                        telemetry::packet       decode by offset, zero copy

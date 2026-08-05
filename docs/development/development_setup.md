@@ -39,7 +39,7 @@ goes to the log file.
 
 ## Develop without the game
 
-You do not need Forza.
+You do not need Forza Horizon 6.
 
 ```bash
 cargo run

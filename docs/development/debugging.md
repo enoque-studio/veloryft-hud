@@ -11,7 +11,7 @@ One record per line: a Unix timestamp, a level, and a message.
 ```
 1754131200 INFO veloryft 0.2.0-beta.1 starting
 1754131200 INFO vehicle catalog: no external catalog found; showing car ordinals
-1754131200 INFO listening for Forza telemetry on 0.0.0.0:20066
+1754131200 INFO listening for Forza Horizon 6 telemetry on 0.0.0.0:20066
 ```
 
 Set the level with `VELORYFT_LOG` — `error`, `warn`, `info` (default), or

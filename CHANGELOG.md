@@ -18,7 +18,7 @@ the project reproducible, reviewable, and ready for outside contributors.
 ### Added
 
 - `examples/synthetic_telemetry`, which drives the HUD without the game, so the
-  overlay can be developed and reviewed without owning Forza.
+  overlay can be developed and reviewed without owning Forza Horizon 6.
 - Structured diagnostics. Release builds use the Windows subsystem and have no
   console, so failures now go to a bounded, rotated log in
   `%APPDATA%\forza-hud-native\logs\`, and failures that prevent startup — a UDP

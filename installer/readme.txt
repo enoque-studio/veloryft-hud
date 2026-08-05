@@ -4,7 +4,7 @@ Quick Start Guide
 --------------------------------------------------------------------------
 1) ENABLE GAME TELEMETRY
 --------------------------------------------------------------------------
-Veloryft appears only when the game is sending telemetry. In Forza, open:
+Veloryft appears only when the game is sending telemetry. In Forza Horizon 6, open:
 
    Settings  ->  HUD and Gameplay  ->  Data Out
 

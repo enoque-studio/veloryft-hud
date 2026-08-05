@@ -34,7 +34,7 @@ cargo build --release
 
 The binary lands at `target/release/veloryft.exe`.
 
-## Testing without Forza
+## Testing without Forza Horizon 6
 
 You do not need the game. Run the overlay in one terminal and the synthetic
 telemetry sender in another:
