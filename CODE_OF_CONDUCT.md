@@ -57,7 +57,7 @@ is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the maintainers by opening a
-[private security advisory](https://github.com/ESousa97/veloryft-hud/security/advisories/new),
+[private security advisory](https://github.com/enoquesousa/veloryft-hud/security/advisories/new),
 which is the private channel this repository has available. All complaints will
 be reviewed and investigated promptly and fairly. Maintainers are obligated to
 respect the privacy and security of the reporter.

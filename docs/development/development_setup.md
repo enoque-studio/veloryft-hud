@@ -17,7 +17,7 @@
 This repository has no private dependencies and needs no access token.
 
 ```bash
-git clone https://github.com/ESousa97/veloryft-hud
+git clone https://github.com/enoquesousa/veloryft-hud
 cd veloryft-hud
 cargo build --release
 ```

@@ -139,4 +139,4 @@ the log. **Read the log before pasting it** — it is written to avoid personal
 data, but a file path can still contain your name.
 
 Use the
-[bug report template](https://github.com/ESousa97/veloryft-hud/issues/new?template=bug_report.yml).
+[bug report template](https://github.com/enoquesousa/veloryft-hud/issues/new?template=bug_report.yml).

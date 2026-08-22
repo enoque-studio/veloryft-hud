@@ -167,9 +167,9 @@ jobs:
             Veloryft does not bundle an unlicensed community catalog; it shows
             the ordinal unless you provide a local mapping.
 
-            Read the [quick start](https://github.com/ESousa97/veloryft-hud#quick-start),
-            [changelog](https://github.com/ESousa97/veloryft-hud/blob/main/CHANGELOG.md),
-            and [installation guide](https://github.com/ESousa97/veloryft-hud/blob/main/docs/getting_started/installation.md).
+            Read the [quick start](https://github.com/enoquesousa/veloryft-hud#quick-start),
+            [changelog](https://github.com/enoquesousa/veloryft-hud/blob/main/CHANGELOG.md),
+            and [installation guide](https://github.com/enoquesousa/veloryft-hud/blob/main/docs/getting_started/installation.md).
           files: |
             dist/Veloryft-Setup-*.exe
             dist/Veloryft-Portable-*.zip

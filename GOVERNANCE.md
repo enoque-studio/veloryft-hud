@@ -3,7 +3,7 @@
 ## 1. Project leadership and maintainership
 
 - **Enoque Sousa** (`@ESousa97`) is the founder, project lead, and primary maintainer of the Veloryft project.
-- The official repository for this project is [ESousa97/veloryft-hud](https://github.com/ESousa97/veloryft-hud).
+- The official repository for this project is [enoquesousa/veloryft-hud](https://github.com/enoquesousa/veloryft-hud).
 
 ## 2. Decision making and roadmap
 
@@ -35,5 +35,5 @@ Contributions from the community are welcomed and appreciated. However:
 
 ## 6. Official channels and communication
 
-- Only channels and accounts explicitly listed in this repository (e.g., the official GitHub repository at `https://github.com/ESousa97/veloryft-hud` and `https://veloryft.com`) are official project channels.
+- Only channels and accounts explicitly listed in this repository (e.g., the official GitHub repository at `https://github.com/enoquesousa/veloryft-hud` and `https://veloryft.com`) are official project channels.
 - No third-party forum, chat server, account, or external publication represents the official Veloryft project unless explicitly linked from official channels.

@@ -121,7 +121,7 @@ program itself is untouched.
 
 ## Still stuck
 
-Open a [bug report](https://github.com/ESousa97/veloryft-hud/issues/new?template=bug_report.yml).
+Open a [bug report](https://github.com/enoquesousa/veloryft-hud/issues/new?template=bug_report.yml).
 Include your Veloryft version, your Windows version, which game, and the
 relevant part of the log — after reading it, since a file path can contain your
 name.
