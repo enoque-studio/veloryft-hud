@@ -2,7 +2,7 @@
 name = "veloryft-hud"
 version = "0.2.0-beta.1"
 description = "Native Direct2D telemetry overlay for Forza on Windows"
-authors = ["Enoque Sousa <https://github.com/ESousa97>"]
+authors = ["Enoque Sousa <https://github.com/enoquesousa>"]
 repository = "https://github.com/enoquesousa/veloryft-hud"
 homepage = "https://github.com/enoquesousa/veloryft-hud"
 license = "Apache-2.0"

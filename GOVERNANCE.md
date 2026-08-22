@@ -2,7 +2,7 @@
 
 ## 1. Project leadership and maintainership
 
-- **Enoque Sousa** (`@ESousa97`) is the founder, project lead, and primary maintainer of the Veloryft project.
+- **Enoque Sousa** (`@enoquesousa`) is the founder, project lead, and primary maintainer of the Veloryft project.
 - The official repository for this project is [enoquesousa/veloryft-hud](https://github.com/enoquesousa/veloryft-hud).
 
 ## 2. Decision making and roadmap
