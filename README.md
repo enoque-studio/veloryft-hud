@@ -8,8 +8,8 @@
 <p align="center">Direct2D rendering · Click-through panels · Adaptive shift points · Local-only data</p>
 
 <p align="center">
-  <a href="https://github.com/ESousa97/veloryft-hud/actions/workflows/ci.yml"><img src="https://github.com/ESousa97/veloryft-hud/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/ESousa97/veloryft-hud/releases"><img src="https://img.shields.io/github/v/release/ESousa97/veloryft-hud?include_prereleases&amp;label=release" alt="Release"></a>
+  <a href="https://github.com/enoquesousa/veloryft-hud/actions/workflows/ci.yml"><img src="https://github.com/enoquesousa/veloryft-hud/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/enoquesousa/veloryft-hud/releases"><img src="https://img.shields.io/github/v/release/enoquesousa/veloryft-hud?include_prereleases&amp;label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2563eb.svg" alt="Apache-2.0 license"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078d4?logo=windows" alt="Windows 10 or later">
   <img src="https://img.shields.io/badge/Rust-1.85%2B-000000?logo=rust" alt="Rust 1.85 or later">
@@ -70,7 +70,7 @@ use the English labels defined by the [localization catalog](src/localization/en
 
 ## Download
 
-Choose a package from [GitHub Releases](https://github.com/ESousa97/veloryft-hud/releases):
+Choose a package from [GitHub Releases](https://github.com/enoquesousa/veloryft-hud/releases):
 
 | Package | Best for |
 | --- | --- |
@@ -146,7 +146,7 @@ You need 64-bit Windows, Rust with the MSVC toolchain, and the Visual Studio
 Build Tools C++ workload.
 
 ```powershell
-git clone https://github.com/ESousa97/veloryft-hud.git
+git clone https://github.com/enoquesousa/veloryft-hud.git
 cd veloryft-hud
 cargo build --release --locked
 ```

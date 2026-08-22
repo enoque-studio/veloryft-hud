@@ -23,7 +23,7 @@ Both contain the same executable.
 | Runs from a USB stick | No | Yes |
 
 Download either from the
-[Releases page](https://github.com/ESousa97/veloryft-hud/releases).
+[Releases page](https://github.com/enoquesousa/veloryft-hud/releases).
 
 ## Verify what you downloaded
 

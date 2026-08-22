@@ -27,7 +27,7 @@ The minimum supported Rust version is **1.85**, and CI verifies it.
 Clone this repository and nothing else. It has no private dependencies.
 
 ```bash
-git clone https://github.com/ESousa97/veloryft-hud
+git clone https://github.com/enoquesousa/veloryft-hud
 cd veloryft-hud
 cargo build --release
 ```

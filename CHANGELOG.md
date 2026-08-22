@@ -94,5 +94,5 @@ the project reproducible, reviewable, and ready for outside contributors.
 First open beta, distributed as an installer and a portable package. Not
 released from this repository's public history.
 
-[Unreleased]: https://github.com/ESousa97/veloryft-hud/compare/v0.2.0-beta.1...HEAD
-[0.2.0-beta.1]: https://github.com/ESousa97/veloryft-hud/releases/tag/v0.2.0-beta.1
+[Unreleased]: https://github.com/enoquesousa/veloryft-hud/compare/v0.2.0-beta.1...HEAD
+[0.2.0-beta.1]: https://github.com/enoquesousa/veloryft-hud/releases/tag/v0.2.0-beta.1

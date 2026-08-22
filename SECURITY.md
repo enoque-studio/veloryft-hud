@@ -6,7 +6,7 @@
 
 Report privately through GitHub Security Advisories:
 
-1. Go to the [Security tab](https://github.com/ESousa97/veloryft-hud/security/advisories/new)
+1. Go to the [Security tab](https://github.com/enoquesousa/veloryft-hud/security/advisories/new)
    of this repository.
 2. Choose **Report a vulnerability**.
 3. Describe the issue, the affected version, and how to reproduce it.

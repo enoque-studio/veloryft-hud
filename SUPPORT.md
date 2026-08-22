@@ -20,9 +20,9 @@ Most reports turn out to be one of a handful of things. The
 
 | I want to… | Go to |
 | ---------- | ----- |
-| Report a bug | [Bug report](https://github.com/ESousa97/veloryft-hud/issues/new?template=bug_report.yml) |
-| Suggest a feature | [Feature request](https://github.com/ESousa97/veloryft-hud/issues/new?template=feature_request.yml) |
-| Ask a question | [Issues](https://github.com/ESousa97/veloryft-hud/issues) |
+| Report a bug | [Bug report](https://github.com/enoquesousa/veloryft-hud/issues/new?template=bug_report.yml) |
+| Suggest a feature | [Feature request](https://github.com/enoquesousa/veloryft-hud/issues/new?template=feature_request.yml) |
+| Ask a question | [Issues](https://github.com/enoquesousa/veloryft-hud/issues) |
 | Report a vulnerability | [SECURITY.md](SECURITY.md) — **not** a public issue |
 | Contribute code | [CONTRIBUTING.md](CONTRIBUTING.md) |
 

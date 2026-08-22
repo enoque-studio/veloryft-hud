@@ -2,9 +2,9 @@
 name = "veloryft-protocol"
 version = "0.1.0"
 description = "Serialization contract for Veloryft world-map data shared between the HUD and the Veloryft backend"
-authors = ["Enoque Sousa <https://github.com/ESousa97>"]
-repository = "https://github.com/ESousa97/veloryft-hud"
-homepage = "https://github.com/ESousa97/veloryft-hud"
+authors = ["Enoque Sousa <https://github.com/enoquesousa>"]
+repository = "https://github.com/enoquesousa/veloryft-hud"
+homepage = "https://github.com/enoquesousa/veloryft-hud"
 license = "Apache-2.0"
 rust-version = "1.85"
 edition = "2021"
